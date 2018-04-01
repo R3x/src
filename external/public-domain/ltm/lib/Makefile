@@ -140,20 +140,9 @@ SRCS+=		bncore.c
 NOMAN=		yes
 
 INCS=		#
-INCS+=		tomcrypt.h
-INCS+=		tomcrypt_argchk.h
-INCS+=		tomcrypt_cfg.h
-INCS+=		tomcrypt_cipher.h
-INCS+=		tomcrypt_custom.h
-INCS+=		tomcrypt_hash.h
-INCS+=		tomcrypt_mac.h
-INCS+=		tomcrypt_macros.h
-INCS+=		tomcrypt_math.h
-INCS+=		tomcrypt_misc.h
-INCS+=		tomcrypt_pk.h
-INCS+=		tomcrypt_pkcs.h
-INCS+=		tomcrypt_prng.h
-INCS+=		tomcrypt_test.h
+INCS+=		tommath.h
+INCS+=		tommath_class.h
+INCS+=		tommath_superclass.h
 
 INCSDIR=	/usr/include
 
