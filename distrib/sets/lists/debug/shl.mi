@@ -277,6 +277,7 @@
 ./usr/libdata/debug/usr/lib/libstdc++.so.8.0.debug		comp-sys-debug	debug,compatfile,gcc=5,cxx,libstdcxx
 ./usr/libdata/debug/usr/lib/libstdc++.so.8.1.debug		comp-sys-debug	debug,compatfile,gcc=6,cxx,libstdcxx
 ./usr/libdata/debug/usr/lib/libterminfo.so.1.0.debug		comp-sys-debug	debug,compatfile
+./usr/libdata/debug/usr/lib/libtommath.so.1.1.debug		comp-sys-debug	debug,compatfile
 ./usr/libdata/debug/usr/lib/libtpm_unseal.so.1.0.debug		comp-tpm-debug	debug,compatfile,tpm
 ./usr/libdata/debug/usr/lib/libtre.so.0.8.debug			comp-sys-debug	debug,compatfile
 ./usr/libdata/debug/usr/lib/libtspi.so.3.0.debug		comp-tpm-debug	debug,compatfile,tpm

@@ -259,6 +259,7 @@
 ./usr/lib/libtermcap_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libterminfo_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libtermlib_pic.a			comp-c-piclib		compatfile,picinstall
+./usr/lib/libtommath_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libtpm_unseal_pic.a			comp-tpm-lib		compatfile,picinstall,tpm
 ./usr/lib/libtre_pic.a				comp-c-piclib		compatfile,picinstall
 ./usr/lib/libtspi_pic.a				comp-c-piclib		compatfile,picinstall,tpm

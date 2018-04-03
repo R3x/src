@@ -3118,6 +3118,9 @@
 ./usr/include/termios.h				comp-c-include
 ./usr/include/threadlib.h			comp-obsolete		obsolete
 ./usr/include/time.h				comp-c-include
+./usr/include/tommath.h				comp-c-include
+./usr/include/tommath_class.h			comp-c-include
+./usr/include/tommath_superclass.h		comp-c-include
 ./usr/include/trousers/trousers.h		comp-c-include		tpm
 ./usr/include/trousers/tss.h			comp-c-include		tpm
 ./usr/include/tss/compat11b.h			comp-c-include		tpm
@@ -3737,6 +3740,8 @@
 ./usr/lib/libterminfo_p.a			comp-c-proflib		compatfile,profile
 ./usr/lib/libtermlib.a				comp-c-lib		compatfile
 ./usr/lib/libtermlib_p.a			comp-c-proflib		compatfile,profile
+./usr/lib/libtommath.a				comp-c-lib		compatfile
+./usr/lib/libtommath_p.a			comp-c-proflib		compatfile,profile
 ./usr/lib/libtpm_unseal.a			comp-c-lib		compatfile,tpm
 ./usr/lib/libtpm_unseal_p.a			comp-c-proflib		compatfile,tpm,profile
 ./usr/lib/libtre.a				comp-c-lib		compatfile
