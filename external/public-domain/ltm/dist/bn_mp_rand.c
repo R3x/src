@@ -30,6 +30,9 @@
 /* makes a pseudo-random int of a given size */
 static mp_digit s_gen_random(void)
 {
+#if (MP_GEN_RANDOM_SHIFT == 32) && !defined(MP_64BIT)
+  return MP_GEN_RANDOM();
+#else
   mp_digit d = 0, msk = 0;
   do {
     d <<= MP_GEN_RANDOM_SHIFT;
@@ -39,6 +42,7 @@ static mp_digit s_gen_random(void)
   } while ((MP_MASK & msk) != MP_MASK);
   d &= MP_MASK;
   return d;
+#endif
 }
 
 int
