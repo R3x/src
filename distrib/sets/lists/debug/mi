@@ -248,6 +248,7 @@
 ./usr/lib/libtddl_g.a				comp-c-debuglib		debuglib,compatfile,tpm
 ./usr/lib/libtermcap_g.a			comp-obsolete		obsolete,compatfile
 ./usr/lib/libterminfo_g.a			comp-c-debuglib		debuglib,compatfile
+./usr/lib/libtommath_g.a			comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libtpm_unseal_g.a			comp-c-debuglib		debuglib,compatfile,tpm
 ./usr/lib/libtre_g.a				comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libtspi_g.a				comp-c-debuglib		debuglib,compatfile,tpm
