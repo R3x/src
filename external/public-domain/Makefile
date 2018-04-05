@@ -4,4 +4,8 @@
 
 SUBDIR+= ltm sqlite tz xz
 
+SUBDIR+= .WAIT
+
+SUBDIR+= libtomcrypt # requires ltm
+
 .include <bsd.subdir.mk>
