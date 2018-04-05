@@ -1,10 +1,11 @@
 #	$NetBSD$
 
+LIB=		tommath
+
 .include <bsd.own.mk>
 
 .include "../Makefile.inc"
 
-LIB=		tommath
 CPPFLAGS+=	-I.
 
 SRCS=		#
@@ -136,8 +137,6 @@ SRCS+=		bn_s_mp_mul_high_digs.c
 SRCS+=		bn_s_mp_sqr.c
 SRCS+=		bn_s_mp_sub.c
 SRCS+=		bncore.c
-
-NOMAN=		yes
 
 INCS=		#
 INCS+=		tommath.h
