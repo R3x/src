@@ -78,6 +78,8 @@ SUBDIR+=	../external/mit/expat/lib
 
 SUBDIR+=	../external/public-domain/sqlite/lib
 
+SUBDIR+=	../external/public-domain/ltm/lib
+
 SUBDIR+=	../external/gpl2/libmalloc
 
 .if (${MKGCC} != "no")
