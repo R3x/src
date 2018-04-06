@@ -12,7 +12,7 @@ SRCS=		#
 
 .PATH: ${DIST}/src/ciphers/aes
 
-SRCS+=		aes_enc.c aes.c
+SRCS+=		aes_tab.c aes.c
 
 .PATH: ${DIST}/src/ciphers
 
@@ -55,14 +55,14 @@ SRCS+=		chc.c
 
 .PATH: ${DIST}/src/hashes/helper
 
-SRCS+=		hash_fileco hash_filehandle.c hash_memory.c hash_memory_multi.c
+SRCS+=		hash_file.c hash_filehandle.c hash_memory.c hash_memory_multi.c
 
 .PATH: ${DIST}/src/hashes
 
 SRCS+=		md2.c md4.c md5.c rmd128.c rmd160.c rmd256.c rmd320.c sha1.c
 SRCS+=		tiger.c
 
-.PATH: ${DIST}/src/sha2
+.PATH: ${DIST}/src/hashes/sha2
 
 SRCS+=		sha256.c sha512.c
 
@@ -240,7 +240,7 @@ SRCS+=		der_decode_utctime.c der_encode_utctime.c der_length_utctime.c
 SRCS+=		der_decode_utf8_string.c der_encode_utf8_string.c
 SRCS+=		der_length_utf8_string.c
 
-.PATH: ${DIST}/src/pk/asn1/der/dsa
+.PATH: ${DIST}/src/pk/dsa
 
 SRCS+=		dsa_decrypt_key.c dsa_encrypt_key.c dsa_export.c dsa_free.c
 SRCS+=		dsa_import.c dsa_make_key.c dsa_shared_secret.c dsa_sign_hash.c
@@ -294,7 +294,10 @@ INCS+=		tomcrypt_misc.h
 INCS+=		tomcrypt_pk.h
 INCS+=		tomcrypt_pkcs.h
 INCS+=		tomcrypt_prng.h
-INCS+=		tomcrypt_test.h
+
+#.PATH: ${DIST}/testprof
+
+#INCS+=		tomcrypt_test.h
 
 INCSDIR=	/usr/include
 
