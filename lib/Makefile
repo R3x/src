@@ -110,6 +110,7 @@ SUBDIR+=	../external/bsd/librtld_db/lib		# depends on libutil
 SUBDIR+=        ../external/cddl/osnet/lib/libctf
 .endif
 
+SUBDIR+=	../external/public-domain/libtomcrypt/lib	# depends on ltm
 SUBDIR+=	../external/public-domain/xz/lib	# depends on libpthread
 SUBDIR+=	../crypto/external/bsd/netpgp/libmj
 SUBDIR+=	../crypto/external/bsd/netpgp/lib/verify # depends on libz
