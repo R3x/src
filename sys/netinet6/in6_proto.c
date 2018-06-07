@@ -1,4 +1,4 @@
-/*	$NetBSD: in6_proto.c,v 1.122 2018/03/15 08:15:21 maxv Exp $	*/
+/*	$NetBSD: in6_proto.c,v 1.125 2018/05/11 09:43:59 roy Exp $	*/
 /*	$KAME: in6_proto.c,v 1.66 2000/10/10 15:35:47 itojun Exp $	*/
 
 /*
@@ -62,7 +62,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in6_proto.c,v 1.122 2018/03/15 08:15:21 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in6_proto.c,v 1.125 2018/05/11 09:43:59 roy Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_gateway.h"
@@ -99,7 +99,6 @@ __KERNEL_RCSID(0, "$NetBSD: in6_proto.c,v 1.122 2018/03/15 08:15:21 maxv Exp $")
 #include <netinet/tcp_seq.h>
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
-#include <netinet/tcpip.h>
 #include <netinet/tcp_debug.h>
 
 #include <netinet6/udp6.h>
@@ -137,8 +136,6 @@ __KERNEL_RCSID(0, "$NetBSD: in6_proto.c,v 1.122 2018/03/15 08:15:21 maxv Exp $")
 #endif
 
 #include <netinet6/ip6protosw.h>
-
-#include <net/net_osdep.h>
 
 /*
  * TCP/IP protocol family: IP6, ICMP6, UDP, TCP.
@@ -597,7 +594,7 @@ int pmtu_expire = 60*10;
  * Nominal space allocated to a raw ip socket.
  */
 #define	RIPV6SNDQ	8192
-#define	RIPV6RCVQ	8192
+#define	RIPV6RCVQ	16384
 
 u_long	rip6_sendspace = RIPV6SNDQ;
 u_long	rip6_recvspace = RIPV6RCVQ;

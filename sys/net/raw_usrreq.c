@@ -1,4 +1,4 @@
-/*	$NetBSD: raw_usrreq.c,v 1.59 2018/03/19 16:26:25 roy Exp $	*/
+/*	$NetBSD: raw_usrreq.c,v 1.61 2018/05/09 06:35:10 maxv Exp $	*/
 
 /*
  * Copyright (c) 1980, 1986, 1993
@@ -36,7 +36,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: raw_usrreq.c,v 1.59 2018/03/19 16:26:25 roy Exp $");
+__KERNEL_RCSID(0, "$NetBSD: raw_usrreq.c,v 1.61 2018/05/09 06:35:10 maxv Exp $");
 
 #include <sys/param.h>
 #include <sys/mbuf.h>
@@ -107,7 +107,7 @@ raw_input(struct mbuf *m0, ...)
 		if (last != NULL) {
 			struct mbuf *n;
 
-			if ((n = m_copy(m, 0, M_COPYALL)) == NULL ||
+			if ((n = m_copypacket(m, M_DONTWAIT)) == NULL ||
 			    sbappendaddr(&last->so_rcv, src, n, NULL) == 0)
 			{
 				if (n != NULL)

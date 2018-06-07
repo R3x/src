@@ -1,4 +1,4 @@
-/* $NetBSD: ibmhawk.c,v 1.4 2016/07/14 04:01:32 msaitoh Exp $ */
+/* $NetBSD: ibmhawk.c,v 1.6 2018/06/06 01:49:08 maya Exp $ */
 
 /*-
  * Copyright (c) 2011 The NetBSD Foundation, Inc.
@@ -98,6 +98,12 @@ ibmhawk_match(device_t parent, cfdata_t match, void *aux)
 	struct i2c_attach_args *ia = aux;
 	ibmhawk_response_t resp;
 	static struct ibmhawk_softc sc;
+
+	/* There is an expected address for this device: */
+	if (ia->ia_addr != 0x37)
+		return 0;
+
+	/* XXX Probe is potentially destructive. */
 
 	sc.sc_tag = ia->ia_tag;
 	sc.sc_addr = ia->ia_addr;
@@ -204,7 +210,7 @@ static int
 ibmhawk_request(struct ibmhawk_softc *sc, uint8_t request,
     ibmhawk_response_t *response)
 {
-	int i, error, retries;;
+	int i, error, retries;
 	uint8_t buf[sizeof(ibmhawk_response_t)+3], dummy;
 
 	error = EIO;	/* Fail until we have a valid response. */

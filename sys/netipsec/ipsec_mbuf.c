@@ -1,4 +1,4 @@
-/*	$NetBSD: ipsec_mbuf.c,v 1.22 2018/03/10 17:52:50 maxv Exp $	*/
+/*	$NetBSD: ipsec_mbuf.c,v 1.28 2018/05/31 15:34:25 maxv Exp $	*/
 
 /*
  * Copyright (c) 2002, 2003 Sam Leffler, Errno Consulting
@@ -25,11 +25,11 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- * $FreeBSD: /repoman/r/ncvs/src/sys/netipsec/ipsec_mbuf.c,v 1.5.2.2 2003/03/28 20:32:53 sam Exp $
+ * $FreeBSD: sys/netipsec/ipsec_mbuf.c,v 1.5.2.2 2003/03/28 20:32:53 sam Exp $
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ipsec_mbuf.c,v 1.22 2018/03/10 17:52:50 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ipsec_mbuf.c,v 1.28 2018/05/31 15:34:25 maxv Exp $");
 
 /*
  * IPsec-specific mbuf routines.
@@ -38,10 +38,6 @@ __KERNEL_RCSID(0, "$NetBSD: ipsec_mbuf.c,v 1.22 2018/03/10 17:52:50 maxv Exp $")
 #include <sys/param.h>
 #include <sys/systm.h>
 #include <sys/mbuf.h>
-#include <sys/socket.h>
-
-#include <net/route.h>
-#include <netinet/in.h>
 
 #include <netipsec/ipsec.h>
 #include <netipsec/ipsec_var.h>
@@ -69,38 +65,26 @@ m_clone(struct mbuf *m0)
 	for (m = m0; m != NULL; m = mprev->m_next) {
 		/*
 		 * Regular mbufs are ignored unless there's a cluster
-		 * in front of it that we can use to coalesce.  We do
-		 * the latter mainly so later clusters can be coalesced
-		 * also w/o having to handle them specially (i.e. convert
-		 * mbuf+cluster -> cluster).  This optimization is heavily
-		 * influenced by the assumption that we're running over
-		 * Ethernet where MCLBYTES is large enough that the max
-		 * packet size will permit lots of coalescing into a
-		 * single cluster.  This in turn permits efficient
-		 * crypto operations, especially when using hardware.
+		 * in front of it that we can use to coalesce.
 		 */
 		if ((m->m_flags & M_EXT) == 0) {
 			if (mprev && (mprev->m_flags & M_EXT) &&
 			    m->m_len <= M_TRAILINGSPACE(mprev)) {
-				/* XXX: this ignores mbuf types */
 				memcpy(mtod(mprev, char *) + mprev->m_len,
-				       mtod(m, char *), m->m_len);
+				    mtod(m, char *), m->m_len);
 				mprev->m_len += m->m_len;
-				mprev->m_next = m->m_next;	/* unlink from chain */
-				m_free(m);			/* reclaim mbuf */
+				mprev->m_next = m_free(m);
 				IPSEC_STATINC(IPSEC_STAT_MBCOALESCED);
 			} else {
 				mprev = m;
 			}
 			continue;
 		}
+
 		/*
-		 * Writable mbufs are left alone (for now).  Note
-		 * that for 4.x systems it's not possible to identify
-		 * whether or not mbufs with external buffers are
-		 * writable unless they use clusters.
+		 * Writable mbufs are left alone.
 		 */
-		if (M_EXT_WRITABLE(m)) {
+		if (!M_READONLY(m)) {
 			mprev = m;
 			continue;
 		}
@@ -111,16 +95,14 @@ m_clone(struct mbuf *m0)
 		 * it anyway, we try to reduce the number of mbufs and
 		 * clusters so that future work is easier).
 		 */
-		KASSERTMSG(m->m_flags & M_EXT, "m_flags 0x%x", m->m_flags);
-		/* NB: we only coalesce into a cluster or larger */
+
+		/* We only coalesce into a cluster. */
 		if (mprev != NULL && (mprev->m_flags & M_EXT) &&
 		    m->m_len <= M_TRAILINGSPACE(mprev)) {
-			/* XXX: this ignores mbuf types */
 			memcpy(mtod(mprev, char *) + mprev->m_len,
-			       mtod(m, char *), m->m_len);
+			    mtod(m, char *), m->m_len);
 			mprev->m_len += m->m_len;
-			mprev->m_next = m->m_next;	/* unlink from chain */
-			m_free(m);			/* reclaim mbuf */
+			mprev->m_next = m_free(m);
 			IPSEC_STATINC(IPSEC_STAT_CLCOALESCED);
 			continue;
 		}
@@ -128,33 +110,27 @@ m_clone(struct mbuf *m0)
 		/*
 		 * Allocate new space to hold the copy...
 		 */
-		/* XXX why can M_PKTHDR be set past the first mbuf? */
 		if (mprev == NULL && (m->m_flags & M_PKTHDR)) {
-			/*
-			 * NB: if a packet header is present we must
-			 * allocate the mbuf separately from any cluster
-			 * because M_MOVE_PKTHDR will smash the data
-			 * pointer and drop the M_EXT marker.
-			 */
 			MGETHDR(n, M_DONTWAIT, m->m_type);
 			if (n == NULL) {
 				m_freem(m0);
-				return (NULL);
+				return NULL;
 			}
 			M_MOVE_PKTHDR(n, m);
 			MCLGET(n, M_DONTWAIT);
 			if ((n->m_flags & M_EXT) == 0) {
 				m_free(n);
 				m_freem(m0);
-				return (NULL);
+				return NULL;
 			}
 		} else {
 			n = m_getcl(M_DONTWAIT, m->m_type, m->m_flags);
 			if (n == NULL) {
 				m_freem(m0);
-				return (NULL);
+				return NULL;
 			}
 		}
+
 		/*
 		 * ... and copy the data.  We deal with jumbo mbufs
 		 * (i.e. m_len > MCLBYTES) by splitting them into
@@ -168,7 +144,7 @@ m_clone(struct mbuf *m0)
 		mfirst = n;
 		mlast = NULL;
 		for (;;) {
-			int cc = min(len, MCLBYTES);
+			const int cc = min(len, MCLBYTES);
 			memcpy(mtod(n, char *), mtod(m, char *) + off, cc);
 			n->m_len = cc;
 			if (mlast != NULL)
@@ -185,7 +161,7 @@ m_clone(struct mbuf *m0)
 			if (n == NULL) {
 				m_freem(mfirst);
 				m_freem(m0);
-				return (NULL);
+				return NULL;
 			}
 		}
 		n->m_next = m->m_next;
@@ -196,7 +172,8 @@ m_clone(struct mbuf *m0)
 		m_free(m);			/* release old mbuf */
 		mprev = mfirst;
 	}
-	return (m0);
+
+	return m0;
 }
 
 /*
@@ -220,7 +197,8 @@ m_makespace(struct mbuf *m0, int skip, int hlen, int *off)
 	for (m = m0; m && skip > m->m_len; m = m->m_next)
 		skip -= m->m_len;
 	if (m == NULL)
-		return (NULL);
+		return NULL;
+
 	/*
 	 * At this point skip is the offset into the mbuf m
 	 * where the new header should be placed.  Figure out
@@ -302,6 +280,7 @@ m_makespace(struct mbuf *m0, int skip, int hlen, int *off)
 		m->m_len += hlen;
 		*off = skip;
 	}
+
 	m0->m_pkthdr.len += hlen;		/* adjust packet length */
 	return m;
 }
@@ -393,17 +372,18 @@ m_striphdr(struct mbuf *m, int skip, int hlen)
 	/* Find beginning of header */
 	m1 = m_getptr(m, skip, &roff);
 	if (m1 == NULL)
-		return (EINVAL);
+		return EINVAL;
 
 	/* Remove the header and associated data from the mbuf. */
 	if (roff == 0) {
 		/* The header was at the beginning of the mbuf */
 		IPSEC_STATINC(IPSEC_STAT_INPUT_FRONT);
 		m_adj(m1, hlen);
-		if ((m1->m_flags & M_PKTHDR) == 0)
+		if (m1 != m)
 			m->m_pkthdr.len -= hlen;
 	} else if (roff + hlen >= m1->m_len) {
 		struct mbuf *mo;
+		int adjlen;
 
 		/*
 		 * Part or all of the header is at the end of this mbuf,
@@ -412,11 +392,13 @@ m_striphdr(struct mbuf *m, int skip, int hlen)
 		 */
 		IPSEC_STATINC(IPSEC_STAT_INPUT_END);
 		if (roff + hlen > m1->m_len) {
+			adjlen = roff + hlen - m1->m_len;
+
 			/* Adjust the next mbuf by the remainder */
-			m_adj(m1->m_next, roff + hlen - m1->m_len);
+			m_adj(m1->m_next, adjlen);
 
 			/* The second mbuf is guaranteed not to have a pkthdr... */
-			m->m_pkthdr.len -= (roff + hlen - m1->m_len);
+			m->m_pkthdr.len -= adjlen;
 		}
 
 		/* Now, let's unlink the mbuf chain for a second...*/
@@ -424,9 +406,10 @@ m_striphdr(struct mbuf *m, int skip, int hlen)
 		m1->m_next = NULL;
 
 		/* ...and trim the end of the first part of the chain...sick */
-		m_adj(m1, -(m1->m_len - roff));
-		if ((m1->m_flags & M_PKTHDR) == 0)
-			m->m_pkthdr.len -= (m1->m_len - roff);
+		adjlen = m1->m_len - roff;
+		m_adj(m1, -adjlen);
+		if (m1 != m)
+			m->m_pkthdr.len -= adjlen;
 
 		/* Finally, let's relink */
 		m1->m_next = mo;
@@ -442,5 +425,6 @@ m_striphdr(struct mbuf *m, int skip, int hlen)
 		m1->m_len -= hlen;
 		m->m_pkthdr.len -= hlen;
 	}
-	return (0);
+
+	return 0;
 }

@@ -1,4 +1,4 @@
-# $NetBSD: shl.mi,v 1.313 2018/02/13 10:02:12 mrg Exp $
+# $NetBSD: shl.mi,v 1.316 2018/05/28 21:04:59 chs Exp $
 #
 # Note: don't delete entries from here - mark them as "obsolete" instead.
 #
@@ -16,6 +16,7 @@
 ./usr/lib/libbind9_pic.a			comp-bind-piclib	compatfile,picinstall
 ./usr/lib/libblacklist_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libbluetooth_pic.a			comp-c-piclib		compatfile,picinstall
+./usr/lib/libbozohttpd_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libbsdmalloc_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libbz2_pic.a				comp-c-piclib		compatfile,picinstall
 ./usr/lib/libc++_pic.a				comp-c-piclib		compatfile,picinstall,libcxx
@@ -113,10 +114,12 @@
 ./usr/lib/libntp_pic.a				comp-obsolete		obsolete
 ./usr/lib/libnvpair_pic.a			comp-zfs-piclib		compatfile,picinstall,zfs
 ./usr/lib/libobjc_pic.a				comp-objc-piclib	compatfile,picinstall,gcccmds
-./usr/lib/libopcodes.so.7			comp-c-shlib		compatfile,binutils=226
-./usr/lib/libopcodes.so.7.0			comp-c-shlib		compatfile,binutils=226
 ./usr/lib/libopcodes.so.8			comp-c-shlib		compatfile,binutils=227
 ./usr/lib/libopcodes.so.8.0			comp-c-shlib		compatfile,binutils=227
+./usr/lib/libopcodes.so.9			comp-c-shlib		compatfile,binutils=230
+./usr/lib/libopcodes.so.9.0			comp-c-shlib		compatfile,binutils=230
+./usr/lib/libopenpgpsdk_pic.a			comp-obsolete		obsolete
+./usr/lib/libossaudio_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libopenpgpsdk_pic.a			comp-obsolete		obsolete
 ./usr/lib/libossaudio_pic.a			comp-c-piclib		compatfile,picinstall
 ./usr/lib/libp2k_pic.a				comp-puffs-piclib	compatfile,picinstall,rump
@@ -275,7 +278,8 @@
 ./usr/lib/libwrap_pic.a				comp-c-piclib		compatfile,picinstall
 ./usr/lib/libz_pic.a				comp-c-piclib		compatfile,picinstall
 ./usr/lib/libzfs_pic.a				comp-zfs-piclib		compatfile,picinstall,zfs
-./usr/lib/libzpool_pic.a			comp-zfs-piclib		compatfile,zfs,picinstall
+./usr/lib/libzfs_core_pic.a			comp-zfs-piclib		compatfile,picinstall,zfs
+./usr/lib/libzpool_pic.a			comp-zfs-piclib		compatfile,picinstall,zfs
 ./usr/libexec/liblto_plugin.so			comp-c-bin              gcc
 ./usr/libexec/liblto_plugin.so.0		comp-c-bin              gcc
 ./usr/libexec/liblto_plugin.so.0.1		comp-c-bin              gcc

@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.651 2018/01/24 09:04:42 skrll Exp $
+#	$NetBSD: Makefile,v 1.655 2018/05/27 05:31:20 thorpej Exp $
 #	@(#)Makefile	8.1 (Berkeley) 6/18/93
 
 MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
@@ -26,15 +26,15 @@ MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
 	fast_ipsec.4 fd.4 filemon.4 finsio.4 flash.4 fpa.4 fms.4 fss.4 \
 	fujbp.4 full.4 fxp.4 \
 	gcscaudio.4 gem.4 genfb.4 gentbi.4 geodeide.4 \
-	glxtphy.4 gpib.4 gpio.4 gpiolock.4 gpiopwm.4 gpiosim.4 gre.4 \
-	gphyter.4 gsip.4 \
+	glxtphy.4 gpib.4 gpio.4 gpioirq.4 gpiolock.4 gpiopps.4 gpiopwm.4 \
+	gpiosim.4 gre.4 gphyter.4 gsip.4 \
 	hdaudio.4 hifn.4 hme.4 hpacel.4 hpqlb.4 hptide.4 hythygtemp.4 \
 	ibmcd.4 ibmhawk.4 ichsmb.4 icmp.4 icp.4 icsphy.4 iee.4 ieee80211.4 \
 	ifmedia.4 igmafb.4 igphy.4 igsfb.4 iha.4 ihidev.4 ihphy.4 iic.4 ims.4 \
 	inet.4 ikphy.4 inphy.4 intersil7170.4 intro.4 \
 	ioasic.4 ioat.4 iop.4 iophy.4 iopsp.4 ip.4 ipkdb.4 ipmi.4 ipw.4 \
 	irmce.4 isp.4 ismt.4 isv.4 itesio.4 iteide.4 iwi.4 iwm.4 iwn.4 ixg.4 \
-	ixpide.4 \
+	ixpide.4 ixv.4 \
 	jme.4 jmide.4 joy.4 \
 	kloader.4 kse.4 ksyms.4 kttcp.4 \
 	l2tp.4 lc.4 ld.4 lii.4 lo.4 lua.4 lxtphy.4 \
@@ -63,7 +63,7 @@ MAN=	aac.4 ac97.4 acardide.4 aceride.4 acphy.4 \
 	svwsata.4 swsensor.4 swwdog.4 sysmon.4 \
 	tap.4 tc.4 tcds.4 tcp.4 tcu.4 tdvfb.4 termios.4 tfb.4 thinkpad.4 \
 	ti.4 tl.4 tlp.4 tlphy.4 tpm.4 tprof.4 tr.4 tra.4 \
-	trm.4 tty.4 tun.4 tqphy.4 twa.4 twe.4 txp.4 \
+	trm.4 tsllux.4 tty.4 tun.4 tqphy.4 twa.4 twe.4 txp.4 \
 	uark.4 ubsec.4 udp.4 uep.4 ug.4 uha.4 uk.4 ukphy.4 unix.4 userconf.4 \
 	vald.4 valz.4 veriexec.4 vga.4 vge.4 viaide.4 video.4 vioif.4 viomb.4 \
 	viornd.4 vioscsi.4 virt.4 \

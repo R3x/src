@@ -1,4 +1,4 @@
-# $NetBSD: Makefile,v 1.2 2014/09/18 19:45:24 wiz Exp $
+# $NetBSD: Makefile,v 1.5 2018/06/06 15:01:13 kamil Exp $
 
 .include "../../Makefile.inc"
 
@@ -12,5 +12,9 @@ CPPFLAGS+=	-I${NETBSDSRCDIR}/external/cddl/osnet/sys \
 		-I${NETBSDSRCDIR}/external/cddl/osnet/dist/uts/common
 
 CPPFLAGS+=	-Wno-unknown-pragmas -Wno-cast-qual
+
+.if defined(HAVE_GCC)
+CPPFLAGS+=	-Wno-discarded-qualifiers
+.endif
 
 .include <bsd.kmodule.mk>

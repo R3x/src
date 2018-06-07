@@ -1,8 +1,6 @@
-#	$NetBSD: Makefile,v 1.8 2016/02/28 22:12:26 riastradh Exp $
+#	$NetBSD: Makefile,v 1.12 2018/05/09 08:13:23 mrg Exp $
 
-NOMAN=		1
-
-.include <bsd.own.mk>
+.include <bsd.hostinit.mk>
 
 HOSTPROG=	mkfontscale
 
@@ -12,7 +10,7 @@ FREETYPE=       ${X11SRCDIR.freetype}
 SRCS.mkfontscale=	mkfontscale.c list.c hash.c ident.c
 
 .PATH:	${FREETYPE}/src/base
-SRCS.freetype+=	ftapi.c ftbase.c ftbbox.c ftbdf.c ftdebug.c ftfntfmt.c \
+SRCS.freetype+=	ftapi.c ftbase.c ftbbox.c ftbdf.c ftdebug.c \
 		ftglyph.c ftinit.c ftmm.c ftpfr.c ftstroke.c ftsynth.c \
 		ftsystem.c fttype1.c ftwinfnt.c ftbitmap.c
 
@@ -91,7 +89,8 @@ HOST_CPPFLAGS+=	-DFT_CONFIG_OPTION_DISABLE_BZIP2
 # fontconfig atomic ops.
 HOST_CPPFLAGS+=	-DFC_NO_MT=1
 
-HOST_CPPFLAGS+=	-I${FREETYPE}/include -I${DESTDIR}${X11INCDIR} \
+HOST_CPPFLAGS+=	-I${FREETYPE}/include -I${FREETYPE}/include/freetype \
+		-I${DESTDIR}${X11INCDIR} \
 		-I${DESTDIR}${X11INCDIR}/freetype2
 
 .include <bsd.x11.mk>

@@ -1,4 +1,4 @@
-/*	$NetBSD: i2cvar.h,v 1.10 2017/12/10 16:53:32 bouyer Exp $	*/
+/*	$NetBSD: i2cvar.h,v 1.12 2018/06/07 05:56:18 thorpej Exp $	*/
 
 /*
  * Copyright (c) 2003 Wasabi Systems, Inc.

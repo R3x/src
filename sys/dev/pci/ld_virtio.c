@@ -1,4 +1,4 @@
-/*	$NetBSD: ld_virtio.c,v 1.16 2017/08/09 16:44:40 mlelstv Exp $	*/
+/*	$NetBSD: ld_virtio.c,v 1.19 2018/06/03 19:50:20 jakllsch Exp $	*/
 
 /*
  * Copyright (c) 2010 Minoura Makoto.
@@ -26,7 +26,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ld_virtio.c,v 1.16 2017/08/09 16:44:40 mlelstv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ld_virtio.c,v 1.19 2018/06/03 19:50:20 jakllsch Exp $");
 
 #include <sys/param.h>
 #include <sys/systm.h>
@@ -60,6 +60,7 @@ __KERNEL_RCSID(0, "$NetBSD: ld_virtio.c,v 1.16 2017/08/09 16:44:40 mlelstv Exp $
 #define VIRTIO_BLK_CONFIG_GEOMETRY_H	18 /* 8bit */
 #define VIRTIO_BLK_CONFIG_GEOMETRY_S	19 /* 8bit */
 #define VIRTIO_BLK_CONFIG_BLK_SIZE	20 /* 32bit */
+#define VIRTIO_BLK_CONFIG_WRITEBACK	32 /* 8bit */
 
 /* Feature bits */
 #define VIRTIO_BLK_F_BARRIER	(1<<0)
@@ -70,15 +71,19 @@ __KERNEL_RCSID(0, "$NetBSD: ld_virtio.c,v 1.16 2017/08/09 16:44:40 mlelstv Exp $
 #define VIRTIO_BLK_F_BLK_SIZE	(1<<6)
 #define VIRTIO_BLK_F_SCSI	(1<<7)
 #define VIRTIO_BLK_F_FLUSH	(1<<9)
+#define VIRTIO_BLK_F_TOPOLOGY	(1<<10)
+#define VIRTIO_BLK_F_CONFIG_WCE	(1<<11)
 
-/*      
+/*
  * Each block request uses at least two segments - one for the header
  * and one for the status.
-*/     
+*/
 #define	VIRTIO_BLK_MIN_SEGMENTS	2
 
 #define VIRTIO_BLK_FLAG_BITS \
 	VIRTIO_COMMON_FLAG_BITS \
+	"\x0c""CONFIG_WCE" \
+	"\x0b""TOPOLOGY" \
 	"\x0a""FLUSH" \
 	"\x08""SCSI" \
 	"\x07""BLK_SIZE" \
@@ -91,11 +96,13 @@ __KERNEL_RCSID(0, "$NetBSD: ld_virtio.c,v 1.16 2017/08/09 16:44:40 mlelstv Exp $
 /* Command */
 #define VIRTIO_BLK_T_IN		0
 #define VIRTIO_BLK_T_OUT	1
+#define VIRTIO_BLK_T_FLUSH	4
 #define VIRTIO_BLK_T_BARRIER	0x80000000
 
 /* Status */
 #define VIRTIO_BLK_S_OK		0
 #define VIRTIO_BLK_S_IOERR	1
+#define VIRTIO_BLK_S_UNSUPP	2
 
 /* Request header structure */
 struct virtio_blk_req_hdr {
@@ -440,6 +447,7 @@ ld_virtio_vq_done1(struct ld_virtio_softc *sc, struct virtio_softc *vsc,
 			0, bp->b_bcount,
 			(bp->b_flags & B_READ)?BUS_DMASYNC_POSTREAD
 					      :BUS_DMASYNC_POSTWRITE);
+	bus_dmamap_unload(virtio_dmat(vsc), vr->vr_payload);
 	bus_dmamap_sync(virtio_dmat(vsc), vr->vr_cmdsts,
 			sizeof(struct virtio_blk_req_hdr), sizeof(uint8_t),
 			BUS_DMASYNC_POSTREAD);
@@ -504,7 +512,7 @@ ld_virtio_dump(struct ld_softc *ld, void *data, int blkno, int blkcnt)
 	if (r != 0)
 		return r;
 
-	r = virtio_enqueue_reserve(vsc, vq, slot, vr->vr_payload->dm_nsegs + 
+	r = virtio_enqueue_reserve(vsc, vq, slot, vr->vr_payload->dm_nsegs +
 	    VIRTIO_BLK_MIN_SEGMENTS);
 	if (r != 0) {
 		bus_dmamap_unload(virtio_dmat(vsc), vr->vr_payload);
@@ -549,7 +557,7 @@ ld_virtio_dump(struct ld_softc *ld, void *data, int blkno, int blkcnt)
 		} else
 			break;
 	}
-		
+
 	bus_dmamap_sync(virtio_dmat(vsc), vr->vr_cmdsts,
 			0, sizeof(struct virtio_blk_req_hdr),
 			BUS_DMASYNC_POSTWRITE);
@@ -612,7 +620,7 @@ MODULE(MODULE_CLASS_DRIVER, ld_virtio, "ld,virtio");
 #define CFDRIVER_DECL(name, class, attr)
 #include "ioconf.c"
 #endif
- 
+
 static int
 ld_virtio_modcmd(modcmd_t cmd, void *opaque)
 {
@@ -624,7 +632,7 @@ ld_virtio_modcmd(modcmd_t cmd, void *opaque)
 	static struct cfdriver * const no_cfdriver_vec[] = { NULL };
 #endif
 	int error = 0;
- 
+
 #ifdef _MODULE
 	switch (cmd) {
 	case MODULE_CMD_INIT:

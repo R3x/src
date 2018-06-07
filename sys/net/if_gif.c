@@ -1,4 +1,4 @@
-/*	$NetBSD: if_gif.c,v 1.139 2018/02/12 15:38:14 maxv Exp $	*/
+/*	$NetBSD: if_gif.c,v 1.142 2018/05/25 04:40:27 ozaki-r Exp $	*/
 /*	$KAME: if_gif.c,v 1.76 2001/08/20 02:01:02 kjc Exp $	*/
 
 /*
@@ -31,7 +31,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_gif.c,v 1.139 2018/02/12 15:38:14 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_gif.c,v 1.142 2018/05/25 04:40:27 ozaki-r Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -87,8 +87,6 @@ __KERNEL_RCSID(0, "$NetBSD: if_gif.c,v 1.139 2018/02/12 15:38:14 maxv Exp $");
 
 #include <netinet/ip_encap.h>
 #include <net/if_gif.h>
-
-#include <net/net_osdep.h>
 
 #include "ioconf.h"
 
@@ -308,9 +306,9 @@ gifattach0(struct gif_softc *sc)
 	if (rv != 0)
 		return rv;
 
-	if_register(&sc->gif_if);
 	if_alloc_sadl(&sc->gif_if);
 	bpf_attach(&sc->gif_if, DLT_NULL, sizeof(u_int));
+	if_register(&sc->gif_if);
 	return 0;
 }
 
@@ -319,7 +317,7 @@ gif_ro_init_pc(void *p, void *arg __unused, struct cpu_info *ci __unused)
 {
 	struct gif_ro *gro = p;
 
-	mutex_init(&gro->gr_lock, MUTEX_DEFAULT, IPL_NONE);
+	gro->gr_lock = mutex_obj_alloc(MUTEX_DEFAULT, IPL_NONE);
 }
 
 static void
@@ -329,7 +327,7 @@ gif_ro_fini_pc(void *p, void *arg __unused, struct cpu_info *ci __unused)
 
 	rtcache_free(&gro->gr_ro);
 
-	mutex_destroy(&gro->gr_lock);
+	mutex_obj_free(gro->gr_lock);
 }
 
 void

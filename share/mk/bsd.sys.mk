@@ -1,4 +1,4 @@
-#	$NetBSD: bsd.sys.mk,v 1.275 2018/02/02 01:02:41 mrg Exp $
+#	$NetBSD: bsd.sys.mk,v 1.279 2018/06/02 03:02:30 christos Exp $
 #
 # Build definitions used for NetBSD source tree builds.
 
@@ -29,9 +29,12 @@ CPPFLAGS+=	-Wp,-iremap,${X11SRCDIR}:/usr/xsrc
 REPROFLAGS+=	-fdebug-prefix-map=\$$NETBSDSRCDIR=/usr/src
 REPROFLAGS+=	-fdebug-prefix-map=\$$X11SRCDIR=/usr/xsrc
 LINTFLAGS+=	-R${NETBSDSRCDIR}=/usr/src -R${X11SRCDIR}=/usr/xsrc
+LINTFLAGS+=	-R${DESTDIR}=
 
-REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj.*=/usr/obj/\1'
-REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj.*/(.*)=/usr/obj/\1/\2'
+REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj$$=/usr/obj/\1'
+REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj/(.*)=/usr/obj/\1/\2'
+REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj\..*=/usr/obj/\1'
+REPROFLAGS+=	-fdebug-regex-map='/usr/src/(.*)/obj\..*/(.*)=/usr/obj/\1/\2'
 
 CFLAGS+=	${REPROFLAGS}
 CXXFLAGS+=	${REPROFLAGS}
@@ -65,13 +68,6 @@ CFLAGS+=	${${ACTIVE_CC} == "gcc" :? -Wno-traditional :}
 .if !defined(NOGCCERROR)
 # Set assembler warnings to be fatal
 CFLAGS+=	${${ACTIVE_CC} == "gcc" :? -Wa,--fatal-warnings :}
-.endif
-
-.if ${MKRELRO:Uno} != "no"
-LDFLAGS+=	-Wl,-z,relro
-.endif
-.if ${MKRELRO:Uno} == "full"
-LDFLAGS+=	-Wl,-z,now
 .endif
 
 # Set linker warnings to be fatal
@@ -125,6 +121,20 @@ CFLAGS+=	-Wno-uninitialized
 CFLAGS+=	-Wno-maybe-uninitialized
 .endif
 .endif
+
+.if ${MKRELRO:Uno} != "no"
+LDFLAGS+=	-Wl,-z,relro
+.endif
+.if ${MKRELRO:Uno} == "full"
+LDFLAGS+=	-Wl,-z,now
+.endif
+
+.if ${MKSANITIZER:Uno} == "yes"
+CFLAGS+=	-fsanitize=${USE_SANITIZER}
+CXXFLAGS+=	-fsanitize=${USE_SANITIZER}
+LDFLAGS+=	-fsanitize=${USE_SANITIZER}
+.endif
+
 
 CWARNFLAGS+=	${CWARNFLAGS.${ACTIVE_CC}}
 

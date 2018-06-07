@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.43 2018/02/11 02:12:28 christos Exp $
+#	$NetBSD: Makefile,v 1.49 2018/04/19 22:01:27 mrg Exp $
 
 LIBISPRIVATE=	yes
 
@@ -194,7 +194,8 @@ tm_p.h: Makefile tm-preds.h
 	HEADERS="$(G_tm_p_include_list)" DEFINES="" \
 	${HOST_SH} ${GNUHOSTDIST}/gcc/mkconfig.sh ${.TARGET}
 
-${G_OBJS} ${G_OBJS:.o=.d}:	tm_p.h		# XXX crude
+# XXX crude
+${G_OBJS} ${G_OBJS:.o=.d}:	tm.h tm_p.h insn-opinit.h
 
 .include "../Makefile.options"
 
@@ -394,20 +395,24 @@ tree-check.h: gencheck
 	./gencheck >${.TARGET}
 CLEANFILES+=	tree-check.h
 
-# Some generators output is not the normal name.
-BUILDSYMLINKS+= insn-check.h tree-check.h
-
 # genattrtab has three output files
-# XXX fix me
-insn-attrtab.c insn-dfatab.c insn-latencytab.c: genattrtab ${G_md_file} insn-conditions.md 
+insn-dfatab.c insn-latencytab.c: insn-attrtab.c
+	cp -p ${.TARGET}.tmp ${.TARGET}
+insn-attrtab.c: genattrtab ${G_md_file} insn-conditions.md 
 	${_MKTARGET_CREATE}
-	./genattrtab ${G_md_file} insn-conditions.md -Ainsn-attrtab.c -Dinsn-dfatab.c -Linsn-latencytab.c
+	./genattrtab ${G_md_file} insn-conditions.md \
+		-A${.TARGET}.tmp -Dinsn-dfatab.c.tmp -Linsn-latencytab.c.tmp && \
+	mv ${.TARGET}.tmp ${.TARGET}
 CLEANFILES+=	insn-attrtab.c insn-dfatab.c insn-latencytab.c
 
 # genopinit has two output files
-insn-opinit.c insn-opinit.h: genopinit ${G_md_file} insn-conditions.md
+insn-opinit.h: insn-opinit.c
+	cp -p ${.TARGET}.tmp ${.TARGET}
+insn-opinit.c: genopinit ${G_md_file} insn-conditions.md
 	${_MKTARGET_CREATE}
-	./genopinit ${G_md_file} insn-conditions.md -hinsn-opinit.h -cinsn-opinit.c
+	./genopinit ${G_md_file} insn-conditions.md \
+		-hinsn-opinit.h.tmp -c${.TARGET}.tmp && \
+	mv ${.TARGET}.tmp ${.TARGET}
 CLEANFILES+=	insn-opinit.h insn-opinit.c
 
 LDFLAGS.genautomata+=	-lm
@@ -446,61 +451,67 @@ ${CASECFNDEPS}: case-cfn-macros.h
 #
 # Required hard-coded dependancies.
 #
+tm.h: insn-constants.h
 genextract.lo: insn-config.h
 gencondmd.lo: tm_p.h tm-constrs.h
-read-rtl.lo gencodes.lo genattrtab.lo genautomata.lo: insn-constants.h gtype-desc.h
-genattr-common.lo gensupport.lo genconditions.lo gentarget-def.lo: insn-constants.h
-genattr.lo genflags.lo genemit.lo genconfig.lo gencheck.lo: insn-constants.h gtype-desc.h
-genopinit.lo genrecog.lo genpreds.lo genoutput.lo genpeep.lo: insn-constants.h 
+read-rtl.lo gencodes.lo genattrtab.lo genautomata.lo: tm.h gtype-desc.h
+genattr-common.lo gensupport.lo genconditions.lo gentarget-def.lo: tm.h
+genattr.lo genflags.lo genemit.lo genconfig.lo gencheck.lo: gtype-desc.h tm.h
+genopinit.lo genrecog.lo genpreds.lo genoutput.lo genpeep.lo: tm.h
 build-ggc-none.lo: gtype-desc.h
 ggc-none.o: gtype-desc.h
-
 insn-attrtab.o: insn-config.h
 insn-extract.o: insn-config.h
 toplev.d toplev.o: options.h
 coverage.d: gcov-iov.h
 gcov-io.h: gcov-iov.h
-alias.d alias.o: insn-constants.h tm_p.h
 cgraph.d cgraphunit.d cgraphunit.o: gcov-io.h
 vec.lo: gtype-desc.h
-gtype-desc.d gtype-desc.o: insn-constants.h
 insn-emit.d insn-emit.o: tm-constrs.h
 insn-attr.h: insn-attr-common.h
-asan.d asan.o: insn-opinit.h
-data-streamer.d data-streamer-out.d coverage.d gcov-dump.d gcov-io.d gcov-iov.d gcov.d libgcov.d lto-cgraph.d mcf.d modulo-sched.d profile.d value-prof.d: gcov-io.h
-data-streamer.o data-streamer-out.o coverage.o gcov-dump.o gcov-io.o gcov-iov.o gcov.o libgcov.o lto-cgraph.o mcf.o modulo-sched.o profile.o value-prof.o: gcov-io.h
 gcov-io.h: gcov-iov.h
 df-scan.d df-scan.o: target-hooks-def.h
 read-md.d read-md.o read-md.lo: auto-build.h
 hash-table.d hash-table.o hash-table.lo: auto-build.h gtype-desc.h
 gencfn-macros.d gencfn-macros.o gencfn-macros.lo: gtype-desc.h
-cgraphunit.d cgraphunit.o: pass-instances.def
+pass_manager.h passes.c: pass-instances.def
+context.d coverage.d lto-cgraph.d passes.d statistics.d toplev.d cgraphunit.d: pass_manager.h
+context.o coverage.o lto-cgraph.o passes.o statistics.o toplev.o cgraphunit.o: pass_manager.h
+insn-opinit.o insn-opinit.d: insn-flags.h
+.for _f in insn-attrtab insn-automata insn-dfatab insn-latencytab insn-output
+${_f}.o ${_f}.d: insn-attr-common.h insn-attr.h
+.endfor
+.for _f in insn-attrtab insn-automata insn-dfatab insn-emit insn-extract \
+	   insn-latencytab insn-opinit insn-output insn-peep insn-preds \
+	   insn-recog
+${_f}.o ${_f}.d: insn-codes.h insn-config.h insn-constants.h insn-flags.h
+.endfor
+.for _f in insn-enums insn-modes
+${_f}.o ${_f}.d: insn-constants.h
+.endfor
+.for _f in data-streamer data-streamer-out coverage gcov-dump gcov-io \
+	   gcov-iov gcov libgcov lto-cgraph mcf modulo-sched profile value-prof
+${_f}.o ${_f}.d: gcov-io.h
+.endfor
+
+${G_out_file:T:.c=.o}: insn-target-def.h target-hooks-def.h tm-constrs.h
 
 # XXX make all hooks generated for now.
 final.o: target-hooks-def.h c-family/c-target-hooks-def.h common/common-target-hooks-def.h
 
-.if ${GCC_MACHINE_ARCH} == "alpha"
-alpha.d alpha.o: tm-constrs.h tm_p.h insn-opinit.h target-hooks-def.h
-alpha.d: pass-instances.def
-.endif
-
 .if ${MACHINE_CPU} == "arm"
-arm.d arm.o: insn-constants.h tm_p.h insn-opinit.h target-hooks-def.h
-arm-builtins.d arm-builtins.o: insn-opinit.h
 # XXX insn-recog.c:10304:7: error: this decimal constant is unsigned only in ISO C90 [-Werror]
 COPTS.insn-recog.c+=-Wno-error
+.endif
+
+.if ${GCC_MACHINE_ARCH} == "i386" || ${GCC_MACHINE_ARCH} == "x86_64"
+i386.d i386.o: pass_manager.h
 .endif
 
 .if ${MACHINE_CPU} == "mips"
 # XXX mips.md:3474:11: error: this decimal constant is unsigned only in ISO C90 [-Werror]
 COPTS.insn-recog.c+=-Wno-error
 .endif
-
-.if ${GCC_MACHINE_ARCH} == "i386" || ${GCC_MACHINE_ARCH} == "x86_64"
-i386.d i386.o: tm-constrs.h
-.endif
-
-${G_out_file:T:.c=.o}: insn-target-def.h
 
 .if ${GCC_MACHINE_ARCH} == "vax"
 CPPFLAGS+=-I${.CURDIR}/../../lib/libgcc/libgcov/arch/${GCC_MACHINE_ARCH}
@@ -509,7 +520,7 @@ COPTS.convert.c+=-O0
 COPTS.dwarf2out.c+=-O0
 COPTS.dse.c+=-O0					# XXX port-vax/51967
 COPTS.expmed.c+=-O0
-COPTS.expr.c+=-O0
+COPTS.expr.c+=-O0 -Wno-error=tautological-compare
 COPTS.fixed-value.c+=-O0
 COPTS.fold-const.c+=-O0
 COPTS.gimple-fold.c+=-O0
@@ -528,6 +539,7 @@ COPTS.tree-affine.c+=-O0
 COPTS.tree-cfg.c+=-O0
 COPTS.tree-eh.c+=-O0
 COPTS.tree-object-size.c+=-O0
+COPTS.tree-parloops.c+=-O0
 COPTS.tree-predcom.c+=-O0
 COPTS.tree-pretty-print.c+=-O0
 COPTS.tree-ssa-alias.c+=-O0
@@ -549,7 +561,7 @@ COPTS.tree-vrp.c+=-O0
 COPTS.tree.c+=-O0
 COPTS.ubsan.c+=-O0
 COPTS.varasm.c+=-O0
-COPTS.wide-int.c+=-O0
+COPTS.wide-int.cc+=-O0
 .else
 COPTS.tree.c=	${${ACTIVE_CC} == "clang" :? -O0 :}
 .endif

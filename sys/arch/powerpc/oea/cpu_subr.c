@@ -1,4 +1,4 @@
-/*	$NetBSD: cpu_subr.c,v 1.92 2018/03/29 16:19:46 macallan Exp $	*/
+/*	$NetBSD: cpu_subr.c,v 1.95 2018/06/01 18:06:58 macallan Exp $	*/
 
 /*-
  * Copyright (c) 2001 Matt Thomas.
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: cpu_subr.c,v 1.92 2018/03/29 16:19:46 macallan Exp $");
+__KERNEL_RCSID(0, "$NetBSD: cpu_subr.c,v 1.95 2018/06/01 18:06:58 macallan Exp $");
 
 #include "opt_ppcparam.h"
 #include "opt_ppccache.h"
@@ -72,6 +72,8 @@ static void cpu_set_dfs_xcall(void *, void *);
 static void cpu_tau_setup(struct cpu_info *);
 static void cpu_tau_refresh(struct sysmon_envsys *, envsys_data_t *);
 #endif
+
+extern void init_scom_speedctl(void);
 
 int cpu = -1;
 int ncpus;
@@ -757,6 +759,11 @@ cpu_setup(device_t self, struct cpu_info *ci)
 		cpu_tau_setup(ci);
 #endif
 
+#if defined(PPC_OEA64) || defined(PPC_OEA64_BRIDGE)
+	if (vers == IBM970MP)
+		init_scom_speedctl();
+#endif
+
 	evcnt_attach_dynamic(&ci->ci_ev_clock, EVCNT_TYPE_INTR,
 		NULL, xname, "clock");
 	evcnt_attach_dynamic(&ci->ci_ev_traps, EVCNT_TYPE_TRAP,
@@ -1315,6 +1322,11 @@ cpu_spinup(device_t self, struct cpu_info *ci)
 	/* copy special registers */
 
 	h->hatch_hid0 = mfspr(SPR_HID0);
+#if defined(PPC_OEA64_BRIDGE) || defined (_ARCH_PPC64)
+	h->hatch_hid1 = mfspr(SPR_HID1);
+	h->hatch_hid4 = mfspr(SPR_HID4);
+	h->hatch_hid5 = mfspr(SPR_HID5);
+#endif
 
 	__asm volatile ("mfsdr1 %0" : "=r"(h->hatch_sdr1));
 	for (i = 0; i < 16; i++) {
@@ -1432,7 +1444,12 @@ cpu_hatch(void)
 
 #ifdef PPC_OEA64_BRIDGE
 	if ((oeacpufeat & OEACPU_64_BRIDGE) != 0) {
+
 		mtspr64(SPR_HID0, h->hatch_hid0);
+		mtspr64(SPR_HID1, h->hatch_hid1);
+		mtspr64(SPR_HID4, h->hatch_hid4);
+		mtspr64(SPR_HID5, h->hatch_hid5);
+		mtspr64(SPR_HIOR, 0);
 	} else
 #endif
 		mtspr(SPR_HID0, h->hatch_hid0);

@@ -1,4 +1,4 @@
-/*	$NetBSD: socketvar.h,v 1.151 2018/03/19 16:26:26 roy Exp $	*/
+/*	$NetBSD: socketvar.h,v 1.156 2018/06/06 09:46:46 roy Exp $	*/
 
 /*-
  * Copyright (c) 2008, 2009 The NetBSD Foundation, Inc.
@@ -160,6 +160,7 @@ struct socket {
 	short		so_qlimit;	/* max number queued connections */
 	short		so_timeo;	/* connection timeout */
 	u_short		so_error;	/* error affecting connection */
+	u_short		so_rerror;	/* error affecting receiving */
 	u_short		so_aborting;	/* references from soabort() */
 	pid_t		so_pgid;	/* pgid for signals */
 	u_long		so_oobmark;	/* chars to oob mark */
@@ -283,7 +284,7 @@ struct mbuf *
 struct mbuf *
 	sbcreatecontrol1(void **, int, int, int, int);
 struct mbuf **
-	sbsavetimestamp(int, struct mbuf *, struct mbuf **);
+	sbsavetimestamp(int, struct mbuf **);
 void	sbdrop(struct sockbuf *, int);
 void	sbdroprecord(struct sockbuf *);
 void	sbflush(struct sockbuf *);
@@ -363,16 +364,14 @@ void	free_control_mbuf(struct lwp *, struct mbuf *, struct mbuf *);
 int	do_sys_getpeername(int, struct sockaddr *);
 int	do_sys_getsockname(int, struct sockaddr *);
 
-int	do_sys_sendmsg(struct lwp *, int, struct msghdr *, int,
-	    const void *, size_t, register_t *);
+int	do_sys_sendmsg(struct lwp *, int, struct msghdr *, int, register_t *);
 int	do_sys_sendmsg_so(struct lwp *, int, struct socket *, file_t *,
-	    struct msghdr *, int, const void *, size_t, register_t *);
+	    struct msghdr *, int, register_t *);
 
 int	do_sys_recvmsg(struct lwp *, int, struct msghdr *,
-	    const void *, size_t, struct mbuf **, struct mbuf **, register_t *);
+	    struct mbuf **, struct mbuf **, register_t *);
 int	do_sys_recvmsg_so(struct lwp *, int, struct socket *,
-	    struct msghdr *mp, const void *, size_t, struct mbuf **,
-	    struct mbuf **, register_t *);
+	    struct msghdr *mp, struct mbuf **, struct mbuf **, register_t *);
 
 int	do_sys_bind(struct lwp *, int, struct sockaddr *);
 int	do_sys_connect(struct lwp *, int, struct sockaddr *);
@@ -389,7 +388,7 @@ int	do_sys_accept(struct lwp *, int, struct sockaddr *, register_t *,
 /*
  * Do we need to notify the other side when I/O is possible?
  */
-static inline int
+static __inline int
 sb_notify(struct sockbuf *sb)
 {
 
@@ -402,7 +401,7 @@ sb_notify(struct sockbuf *sb)
  * How much space is there in a socket buffer (so->so_snd or so->so_rcv)?
  * Since the fields are unsigned, detect overflow and return 0.
  */
-static inline u_long
+static __inline u_long
 sbspace(const struct sockbuf *sb)
 {
 
@@ -413,7 +412,7 @@ sbspace(const struct sockbuf *sb)
 }
 
 /* do we have to send all at once on a socket? */
-static inline int
+static __inline int
 sosendallatonce(const struct socket *so)
 {
 
@@ -421,7 +420,7 @@ sosendallatonce(const struct socket *so)
 }
 
 /* can we read something from so? */
-static inline int
+static __inline int
 soreadable(const struct socket *so)
 {
 
@@ -433,7 +432,7 @@ soreadable(const struct socket *so)
 }
 
 /* can we write something to so? */
-static inline int
+static __inline int
 sowritable(const struct socket *so)
 {
 
@@ -447,7 +446,7 @@ sowritable(const struct socket *so)
 }
 
 /* adjust counters in sb reflecting allocation of m */
-static inline void
+static __inline void
 sballoc(struct sockbuf *sb, struct mbuf *m)
 {
 
@@ -460,7 +459,7 @@ sballoc(struct sockbuf *sb, struct mbuf *m)
 }
 
 /* adjust counters in sb reflecting freeing of m */
-static inline void
+static __inline void
 sbfree(struct sockbuf *sb, struct mbuf *m)
 {
 
@@ -472,7 +471,7 @@ sbfree(struct sockbuf *sb, struct mbuf *m)
 		sb->sb_mbcnt -= m->m_ext.ext_size;
 }
 
-static inline void
+static __inline void
 sorwakeup(struct socket *so)
 {
 
@@ -482,7 +481,7 @@ sorwakeup(struct socket *so)
 		sowakeup(so, &so->so_rcv, POLL_IN);
 }
 
-static inline void
+static __inline void
 sowwakeup(struct socket *so)
 {
 
@@ -492,7 +491,7 @@ sowwakeup(struct socket *so)
 		sowakeup(so, &so->so_snd, POLL_OUT);
 }
 
-static inline void
+static __inline void
 solock(struct socket *so)
 {
 	kmutex_t *lock;
@@ -503,7 +502,7 @@ solock(struct socket *so)
 		solockretry(so, lock);
 }
 	
-static inline void
+static __inline void
 sounlock(struct socket *so)
 {
 

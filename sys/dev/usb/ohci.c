@@ -1,4 +1,4 @@
-/*	$NetBSD: ohci.c,v 1.279 2018/02/03 08:52:52 skrll Exp $	*/
+/*	$NetBSD: ohci.c,v 1.281 2018/06/06 01:49:09 maya Exp $	*/
 
 /*
  * Copyright (c) 1998, 2004, 2005, 2012 The NetBSD Foundation, Inc.
@@ -41,7 +41,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ohci.c,v 1.279 2018/02/03 08:52:52 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ohci.c,v 1.281 2018/06/06 01:49:09 maya Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_usb.h"
@@ -2376,20 +2376,7 @@ ohci_roothub_ctrl(struct usbd_bus *bus, usb_device_request_t *req,
 		if (len == 0)
 			break;
 		switch (value) {
-		case C(0, UDESC_DEVICE): {
-			usb_device_descriptor_t devd;
-
-			totlen = min(buflen, sizeof(devd));
-			memcpy(&devd, buf, totlen);
-			USETW(devd.idVendor, sc->sc_id_vendor);
-			memcpy(buf, &devd, totlen);
-			break;
-		}
-		case C(1, UDESC_STRING):
 #define sd ((usb_string_descriptor_t *)buf)
-			/* Vendor */
-			totlen = usb_makestrdesc(sd, len, sc->sc_vendor);
-			break;
 		case C(2, UDESC_STRING):
 			/* Product */
 			totlen = usb_makestrdesc(sd, len, "OHCI root hub");
@@ -2906,7 +2893,7 @@ ohci_device_bulk_init(struct usbd_xfer *xfer)
 {
 	ohci_softc_t *sc = OHCI_XFER2SC(xfer);
 	int len = xfer->ux_bufsize;
-	int endpt = xfer->ux_pipe->up_endpoint->ue_edesc->bEndpointAddress;;
+	int endpt = xfer->ux_pipe->up_endpoint->ue_edesc->bEndpointAddress;
 	int isread = UE_GET_DIR(endpt) == UE_DIR_IN;
 	int err;
 
@@ -3104,7 +3091,7 @@ ohci_device_intr_init(struct usbd_xfer *xfer)
 	struct ohci_xfer *ox = OHCI_XFER2OXFER(xfer);
 	ohci_softc_t *sc = OHCI_XFER2SC(xfer);
 	int len = xfer->ux_bufsize;
-	int endpt = xfer->ux_pipe->up_endpoint->ue_edesc->bEndpointAddress;;
+	int endpt = xfer->ux_pipe->up_endpoint->ue_edesc->bEndpointAddress;
 	int isread = UE_GET_DIR(endpt) == UE_DIR_IN;
 	int err;
 

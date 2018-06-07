@@ -1,4 +1,4 @@
-/* $NetBSD: sunxi_gpio.c,v 1.19 2018/03/03 01:19:07 jmcneill Exp $ */
+/* $NetBSD: sunxi_gpio.c,v 1.21 2018/05/31 20:52:53 jmcneill Exp $ */
 
 /*-
  * Copyright (c) 2017 Jared McNeill <jmcneill@invisible.ca>
@@ -29,7 +29,7 @@
 #include "opt_soc.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: sunxi_gpio.c,v 1.19 2018/03/03 01:19:07 jmcneill Exp $");
+__KERNEL_RCSID(0, "$NetBSD: sunxi_gpio.c,v 1.21 2018/05/31 20:52:53 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -328,9 +328,12 @@ sunxi_gpio_acquire(device_t dev, const void *data, size_t len, int flags)
 static void
 sunxi_gpio_release(device_t dev, void *priv)
 {
+	struct sunxi_gpio_softc * const sc = device_private(dev);
 	struct sunxi_gpio_pin *pin = priv;
 
+	mutex_enter(&sc->sc_lock);
 	sunxi_gpio_ctl(pin->pin_sc, pin->pin_def, GPIO_PIN_INPUT);
+	mutex_exit(&sc->sc_lock);
 
 	kmem_free(pin, sizeof(*pin));
 }
@@ -480,7 +483,7 @@ sunxi_gpio_establish(device_t dev, u_int *specifier, int ipl, int flags,
 	if (pin_def == NULL)
 		return NULL;
 	if (pin_def->functions[pin_def->eint_func] == NULL ||
-	    strcmp(pin_def->functions[pin_def->eint_func], "eint") != 0)
+	    strcmp(pin_def->functions[pin_def->eint_func], "irq") != 0)
 		return NULL;
 
 	KASSERT(pin_def->eint_num < SUNXI_GPIO_MAX_EINT);
@@ -494,7 +497,7 @@ sunxi_gpio_establish(device_t dev, u_int *specifier, int ipl, int flags,
 	}
 
 	/* Set function */
-	if (sunxi_gpio_setfunc(sc, pin_def, "eint") != 0) {
+	if (sunxi_gpio_setfunc(sc, pin_def, "irq") != 0) {
 		mutex_exit(&sc->sc_lock);
 		return NULL;
 	}

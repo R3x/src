@@ -1,4 +1,4 @@
-/*	$NetBSD: bcm2835_bsc.c,v 1.10 2018/03/03 16:03:38 skrll Exp $	*/
+/*	$NetBSD: bcm2835_bsc.c,v 1.12 2018/06/07 05:07:28 thorpej Exp $	*/
 
 /*
  * Copyright (c) 2012 Jonathan A. Kollasch
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: bcm2835_bsc.c,v 1.10 2018/03/03 16:03:38 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: bcm2835_bsc.c,v 1.12 2018/06/07 05:07:28 thorpej Exp $");
 
 #if defined(_KERNEL_OPT)
 #include "opt_kernhist.h"
@@ -183,8 +183,6 @@ bsciic_attach(device_t parent, device_t self, void *aux)
 	iba.iba_child_devices = prop_dictionary_get(devs, "i2c-child-devices");
 	if (iba.iba_child_devices)
 		prop_object_retain(iba.iba_child_devices);
-	else
-		iba.iba_child_devices = prop_array_create();
 	prop_object_release(devs);
 
 	config_found_ia(self, "i2cbus", &iba, iicbus_print);
@@ -244,7 +242,14 @@ bsciic_exec(void *v, i2c_op_t op, i2c_addr_t addr, const void *cmdbuf,
 	size_t len;
 	size_t pos;
 	int error = 0;
+	int whichbuf = 0;
 	const bool isread = I2C_OP_READ_P(op);
+
+	/*
+	 * XXX We don't do 10-bit addressing correctly yet.
+	 */
+	if (addr > 0x7f)
+		return (ENOTSUP);
 
 	flags |= I2C_F_POLL;
 
@@ -314,10 +319,13 @@ flood_again:
 	KERNHIST_LOG(bsciichist, "flood bot %#jx %ju",
 	    (uintptr_t)buf, len, 0, 0);
 
-	if (buf == cmdbuf && !isread) {
+	if (whichbuf == 0 && !isread) {
+		KASSERT(buf == cmdbuf);
+		whichbuf++;
 		buf = databuf;
 		len = datalen;
-		goto flood_again;
+		if (len)
+			goto flood_again;
 	}
 
 	do {

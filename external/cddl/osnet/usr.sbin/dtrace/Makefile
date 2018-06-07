@@ -1,6 +1,6 @@
-#	$NetBSD: Makefile,v 1.9 2016/02/05 10:14:49 roy Exp $
+#	$NetBSD: Makefile,v 1.11 2018/06/06 14:31:45 kamil Exp $
 
-# $FreeBSD: src/cddl/usr.sbin/dtrace/Makefile,v 1.1.4.1 2009/08/03 08:13:06 kensmith Exp $
+# $FreeBSD: head/cddl/usr.sbin/dtrace/Makefile 314654 2017-03-04 11:30:04Z ngie $
 
 .include <bsd.own.mk>
 .include	"../../Makefile.inc"
@@ -30,6 +30,14 @@ CFLAGS+=	-I${OSNETDIR}/sys \
 
 COPTS.dtrace.c += -Wno-stack-protector
 COPTS.dtrace.c += -Wno-format-extra-args
+
+COPTS.dtrace.c += -Wno-shadow
+.if defined(HAVE_GCC)
+COPTS.dtrace.c += -Wno-discarded-qualifiers
+COPTS.dtrace.c += -Wno-unused-but-set-variable
+.endif
+COPTS.dtrace.c += -Wno-missing-field-initializers
+COPTS.dtrace.c += -Wno-format
 
 LDFLAGS+=	-pthread
 

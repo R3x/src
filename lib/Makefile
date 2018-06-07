@@ -1,4 +1,4 @@
-#	$NetBSD: Makefile,v 1.254 2018/02/04 03:19:53 christos Exp $
+#	$NetBSD: Makefile,v 1.257 2018/05/28 21:05:00 chs Exp $
 #	from: @(#)Makefile	5.25.1.1 (Berkeley) 5/7/91
 
 .include <bsd.own.mk>
@@ -144,7 +144,7 @@ SUBDIR+=	../external/bsd/iscsi/lib	# depends on libpthread
 .endif
 
 .if (${MKZFS} != "no")
-SUBDIR+=        ../external/cddl/osnet/lib/libzfs
+SUBDIR+=        ../external/cddl/osnet/lib/libzfs_core
 SUBDIR+=        ../external/cddl/osnet/lib/libzpool
 .endif
 
@@ -213,9 +213,16 @@ SUBDIR+=	../external/bsd/fetch/lib	# depends on libssl
 SUBDIR+=	../external/bsd/openldap/lib	# depends on libcrypto, ...
 .endif
 
+.if (${MKZFS} != "no")
+SUBDIR+=        ../external/cddl/osnet/lib/libzfs
+.endif
+
+SUBDIR+= 	../libexec/httpd/libbozohttpd 	# depends on libssl & libcrypto
+
 #==================== 3rd library dependency barrier ====================
 SUBDIR+=	.WAIT
 
+SUBDIR+=	../crypto/external/bsd/netpgp/bindings/lua  # depends on netpgp/lib
 SUBDIR+=	../external/bsd/bind/lib	# depends on heimdal, libcrypto
 .if ${MKUNBOUND} != "no"
 SUBDIR+=	../external/bsd/unbound/lib	# depends on libcrypto

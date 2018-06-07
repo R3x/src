@@ -1,4 +1,4 @@
-/* $NetBSD: ixgbe_osdep.h,v 1.20 2018/03/15 06:48:51 msaitoh Exp $ */
+/* $NetBSD: ixgbe_osdep.h,v 1.22 2018/04/25 08:46:19 msaitoh Exp $ */
 
 /******************************************************************************
   SPDX-License-Identifier: BSD-3-Clause
@@ -33,7 +33,7 @@
   POSSIBILITY OF SUCH DAMAGE.
 
 ******************************************************************************/
-/*$FreeBSD: head/sys/dev/ixgbe/ixgbe_osdep.h 320688 2017-07-05 17:27:03Z erj $*/
+/*$FreeBSD: head/sys/dev/ixgbe/ixgbe_osdep.h 327031 2017-12-20 18:15:06Z erj $*/
 
 #ifndef _IXGBE_OSDEP_H_
 #define _IXGBE_OSDEP_H_
@@ -207,6 +207,8 @@ struct ixgbe_osdep
 	bus_space_handle_t mem_bus_space_handle;
 	bus_size_t         mem_size;
 	bus_dma_tag_t      dmat;
+	u16                last_rx_mbuf_sz;
+	u32                last_num_rx_desc;
 	pci_intr_handle_t  *intrs;
 	int		   nintrs;
 	void               *ihs[IXG_MAX_NINTR];
