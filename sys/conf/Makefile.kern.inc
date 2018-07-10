@@ -109,7 +109,7 @@ CFLAGS+=	-fno-common
 .endif
 
 # Kernel Undefined Behavior Sanitizer options
-.if defined(KUBSAN) && ${ACTIVE_CC} == "gcc"
+.if defined(KASAN) && ${ACTIVE_CC} == "gcc"
 CFLAGS+=       -fsanitize=kernel-address
 .endif
 
