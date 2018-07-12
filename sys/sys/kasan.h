@@ -136,13 +136,22 @@ void kasan_restore_multi_shot(bool enabled);
 
 //int kasan_depth;
 
-struct kasan_access_info {
-	const void *access_addr;
+struct kasan_bug_info {
+        /* buffers to store report parts */
+        const char *start;
+        const char *end;
+        char *bug_type;
+        char *bug_info;
+
+        /* Varible to store important details */
+        const void *access_addr;
 	const void *first_bad_addr;
 	size_t access_size;
 	bool is_write;
 	unsigned long ip;
 };
+
+
 
 /* The layout of struct dictated by compiler */
 struct kasan_source_location {
