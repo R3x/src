@@ -24,6 +24,7 @@ __KERNEL_RCSID(0, "$NetBSD$");
 
 #define TASK_SIZE 30 //Temp
 
+#define panic printf
 //Typedefs for current version
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -67,13 +68,13 @@ static const void *find_first_bad_addr(const void *addr, size_t size)
 */	return first_bad_addr;
 }
 
-static bool addr_has_shadow(struct kasan_access_info *info)
+static bool addr_has_shadow(struct kasan_bug_info *info)
 {
 	return (info->access_addr >=
 		kasan_shadow_to_mem((void *)KASAN_SHADOW_START));
 }
 
-static const char *get_shadow_bug_type(struct kasan_access_info *info)
+static const char *get_shadow_bug_type(struct kasan_bug_info *info)
 {
 	const char *bug_type = "unknown-crash";
 	u8 *shadow_addr;
@@ -127,7 +128,7 @@ static const char *get_shadow_bug_type(struct kasan_access_info *info)
 	return bug_type;
 }
 
-static const char *get_wild_bug_type(struct kasan_access_info *info)
+static const char *get_wild_bug_type(struct kasan_bug_info *info)
 {
 	const char *bug_type = "unknown-crash";
 
@@ -141,24 +142,22 @@ static const char *get_wild_bug_type(struct kasan_access_info *info)
 	return bug_type;
 }
 
-static const char *get_bug_type(struct kasan_access_info *info)
+static const char *get_bug_type(struct kasan_bug_info *info)
 {
 	if (addr_has_shadow(info))
 		return get_shadow_bug_type(info);
 	return get_wild_bug_type(info);
 }
 
-static void print_error_description(struct kasan_access_info *info)
+static void print_error_description(struct kasan_bug_info *info)
 {
 	const char *bug_type = get_bug_type(info);
 
-	aprint_error("BUG: KASAN: %s in %pS\n",
+	snprintf(info->bug_type, 100, "BUG: KASAN: %s in %pS\n",
 		bug_type, (void *)info->ip);
-/*	aprint_error("%s of size %zu at addr %px by task %s/%d\n",
+	snprintf(info->bug_info, 100, "%s of size %zu at addr %px\n",
 		info->is_write ? "Write" : "Read", info->access_size,
-		info->access_addr, current->comm, task_pid_nr(current));
-replace current here
-*/
+		info->access_addr);
 }
 /*
 static inline bool kernel_or_module_addr(const void *addr)
@@ -179,25 +178,11 @@ static inline bool init_task_stack_addr(const void *addr)
 
 static DEFINE_SPINLOCK(report_lock);
 */
-static void kasan_start_report(unsigned long *flags)
-{
-	/*
-	 * Make sure we don't end up in loop.
-	 */
-//	kasan_disable_current();
-//	spin_lock_irqsave(&report_lock, *flags);
-	aprint_error("==================================================================\n");
-}
 
-static void kasan_end_report(unsigned long *flags)
-{
-	aprint_error("==================================================================\n");
-	//add_taint(TAINT_BAD_PAGE, LOCKDEP_NOW_UNRELIABLE);
-//	spin_unlock_irqrestore(&report_lock, *flags);
-//	if (panic_on_warn)
-//		panic("panic_on_warn set ...\n");
-//	kasan_enable_current();
-}
+/*
+ * REMOVED start_report and end report
+ */
+
 /*
 static void print_track(struct kasan_track *track, const char *prefix)
 {
@@ -357,14 +342,14 @@ void kasan_report_invalid_free(void *object, unsigned long ip)
 	kasan_end_report(&flags);
 }
 */
-static void kasan_report_error(struct kasan_access_info *info)
+static void kasan_report_error(struct kasan_bug_info *info)
 {
-	unsigned long flags;
+	const char *delimit = "==================================================================\n";
 
-	kasan_start_report(&flags);
+        info->start = delimit;
+        info->end = delimit;
 
 	print_error_description(info);
-//	pr_err("\n");
 
 	if (!addr_has_shadow(info)) {
 //		dump_stack();
@@ -374,7 +359,12 @@ static void kasan_report_error(struct kasan_access_info *info)
 //		print_shadow_for_address(info->first_bad_addr);
 	}
 
-	kasan_end_report(&flags);
+}
+
+static void
+kasan_print_report(struct kasan_bug_info *info)
+{
+        panic("%s %s\n %s\n %s", info->start, info->bug_type, info->bug_info, info->end);
 }
 
 //static unsigned long kasan_flags;
@@ -415,7 +405,7 @@ static inline bool kasan_report_enabled(void)
 void kasan_report(unsigned long addr, size_t size,
 		bool is_write, unsigned long ip)
 {
-	struct kasan_access_info info;
+	struct kasan_bug_info info;
 
 /*	if (likely(!kasan_report_enabled()))
                 return;
@@ -430,6 +420,7 @@ Not necessary maybe
 	info.ip = ip;
 
 	kasan_report_error(&info);
+        kasan_print_report(&info);
 }
 
 
