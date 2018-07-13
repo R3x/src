@@ -34,6 +34,8 @@ struct task_struct;
 void kasan_early_init(void);
 void kasan_init(void);
 
+void *text_start;
+void *text_end;
 //#ifdef CONFIG_KASAN
 
 /*

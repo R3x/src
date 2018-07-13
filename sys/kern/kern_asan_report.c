@@ -153,22 +153,25 @@ static void print_error_description(struct kasan_bug_info *info)
 {
 	const char *bug_type = get_bug_type(info);
 
-	snprintf(info->bug_type, 100, "BUG: KASAN: %s in %pS\n",
+	snprintf(info->bug_type, 50, "BUG: KASAN: %s in %pS\n",
 		bug_type, (void *)info->ip);
-	snprintf(info->bug_info, 100, "%s of size %zu at addr %px\n",
+	snprintf(info->bug_info, 60, "%s of size %zu at addr %px\n",
 		info->is_write ? "Write" : "Read", info->access_size,
 		info->access_addr);
 }
-/*
+
+extern void * text_start ;
+extern void * text_end ;
+
 static inline bool kernel_or_module_addr(const void *addr)
 {
-	if (addr >= (void *)_stext && addr < (void *)_end)
+	if (addr >= (void *)text_start && addr < (void *)text_end)
 		return true;
-	if (is_module_address((unsigned long)addr))
+/*	if (is_module_address((unsigned long)addr))
 		return true;
-	return false;
+*/	return false;
 }
-
+/*
 static inline bool init_task_stack_addr(const void *addr)
 {
 	return addr >= (void *)&init_thread_union.stack &&
@@ -364,7 +367,7 @@ static void kasan_report_error(struct kasan_bug_info *info)
 static void
 kasan_print_report(struct kasan_bug_info *info)
 {
-        panic("%s %s\n %s\n %s", info->start, info->bug_type, info->bug_info, info->end);
+        panic("%.67s %s\n %s\n %.67s", info->start, info->bug_type, info->bug_info, info->end);
 }
 
 //static unsigned long kasan_flags;

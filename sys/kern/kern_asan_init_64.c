@@ -462,9 +462,9 @@ kasan_init(void)
 
 	/*  Text Section and main shadow offsets */
 	DumpSegments();
-/*	text_begin = (void *)kmap[1].vaddr;
+	text_start = (void *)kmap[1].vaddr;
 	text_end = (void *)(kmap[1].vaddr + kmap[1].size);
-        
+/*        
 	shadow_begin = (void *)VM_MIN_KERNEL_ADDRESS;
         shadow_end = (void *); //Temp Need to update
 */
