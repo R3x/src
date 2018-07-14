@@ -420,8 +420,8 @@ void kasan_init(void)
 */
 
 struct seg_details {
-        int64_t * vaddr;
-        int64_t size;
+        unsigned long vaddr;
+        unsigned long size;
 };
 
 static struct seg_details kmap[4];
@@ -440,11 +440,13 @@ DumpSegments(void)
 		if (bootspace.segs[i].type == BTSEG_NONE) {
 			continue;
 		}
-	        kmap[bootspace.segs[i].type].vaddr = (void *)bootspace.segs[i].va;
+	        kmap[bootspace.segs[i].type].vaddr = bootspace.segs[i].va;
                 kmap[bootspace.segs[i].type].size = bootspace.segs[i].sz;
 	}
 }
 
+unsigned long text_start;
+unsigned long text_end;
 
 void
 kasan_init(void)
@@ -462,8 +464,8 @@ kasan_init(void)
 
 	/*  Text Section and main shadow offsets */
 	DumpSegments();
-	text_start = (void *)kmap[1].vaddr;
-	text_end = (void *)(kmap[1].vaddr + kmap[1].size);
+	text_start = kmap[1].vaddr;
+	text_end = kmap[1].vaddr + kmap[1].size;
 /*        
 	shadow_begin = (void *)VM_MIN_KERNEL_ADDRESS;
         shadow_end = (void *); //Temp Need to update

@@ -160,8 +160,8 @@ static void print_error_description(struct kasan_bug_info *info)
 		info->access_addr);
 }
 
-extern void * text_start ;
-extern void * text_end ;
+extern unsigned long text_start ;
+extern unsigned long text_end ;
 
 static inline bool kernel_or_module_addr(const void *addr)
 {
