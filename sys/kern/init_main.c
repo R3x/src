@@ -226,7 +226,10 @@ extern void *_binary_splash_image_end;
 
 extern struct lwp lwp0;
 extern time_t rootfstime;
+
+#ifdef PAX_ASLR
 extern int pax_aslr_enabled;
+#endif
 
 #ifndef curlwp
 struct	lwp *curlwp = &lwp0;
@@ -1025,9 +1028,11 @@ start_init(void *arg)
 		}
 #endif
 
-                if (boothowto & RB_NO_ASLR) {
-                        pax_aslr_enabled = 0;
-                }
+		if (boothowto & RB_NO_ASLR) {
+#ifdef PAX_ASLR
+			pax_aslr_enabled = 0;
+#endif
+		}
 
 		/*
 		 * Move out the flags (arg 1), if necessary.

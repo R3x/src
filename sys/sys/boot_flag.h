@@ -67,9 +67,6 @@
 	case 'm': /* mini root present in memory */		\
 		(retval) |= RB_MINIROOT;			\
 		break;						\
-        case 'A': /* No ASLR boot */                            \
-                (retval) |= RB_NO_ASLR;                         \
-		break;                                          \
 	case 'q': /* boot quietly */				\
 		(retval) |= AB_QUIET;				\
 		break;						\
@@ -84,8 +81,11 @@
 		break;						\
 	case 'z': /* boot silently */				\
 		(retval) |= AB_SILENT;				\
-		break;                                          \
-        default:  /* something else, do nothing */		\
+		break;						\
+	case 'A': /* No ASLR boot */				\
+		(retval) |= RB_NO_ASLR;				\
+		break;						\
+	default:  /* something else, do nothing */		\
 		break;						\
 	} /* switch */						\
 								\

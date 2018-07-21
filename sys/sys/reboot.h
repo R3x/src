@@ -53,7 +53,7 @@
 #define	RB_STRING	0x00000400	/* use provided bootstr */
 #define	RB_POWERDOWN	(RB_HALT|0x800) /* turn power off (or at least halt) */
 #define RB_USERCONF	0x00001000	/* change configured devices */
-#define RB_NO_ASLR      0x00002000      /* turn off ASLR during boot */
+#define RB_NO_ASLR	0x00002000	/* turn off ASLR during boot */
 
 /*
  * Extra autoboot flags (passed by boot prog to kernel). See also
