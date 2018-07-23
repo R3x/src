@@ -52,6 +52,9 @@
 	case '4': /* machine dependent flag */			\
 		(retval) |= RB_MD4;				\
 		break;						\
+	case 'A': /* No ASLR boot */				\
+		(retval) |= RB_NO_ASLR;				\
+		break;						\
 	case 'a': /* ask for file name to boot from */		\
 		(retval) |= RB_ASKNAME;				\
 		break;						\
@@ -81,9 +84,6 @@
 		break;						\
 	case 'z': /* boot silently */				\
 		(retval) |= AB_SILENT;				\
-		break;						\
-	case 'A': /* No ASLR boot */				\
-		(retval) |= RB_NO_ASLR;				\
 		break;						\
 	default:  /* something else, do nothing */		\
 		break;						\
