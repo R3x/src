@@ -452,11 +452,10 @@ void
 kasan_init(void)
 {
         struct pmap *kernmap;
-        /*
-        void *shadow_begin, *shadow_end;
-	void *text_begin, *text_end;
-*/
-	/* clearing page table entries for the shadow region */
+        struct vm_map shadow_map;
+        // void *shadow_begin, *shadow_end;
+
+        /* clearing page table entries for the shadow region */
         kernmap = pmap_kernel();
         pmap_remove(kernmap, KASAN_SHADOW_START, KASAN_SHADOW_END);
         pmap_update(kernmap);
@@ -466,10 +465,39 @@ kasan_init(void)
 	DumpSegments();
 	text_start = kmap[1].vaddr;
 	text_end = kmap[1].vaddr + kmap[1].size;
-/*        
-	shadow_begin = (void *)VM_MIN_KERNEL_ADDRESS;
-        shadow_end = (void *); //Temp Need to update
-*/
+
+        /* Initialize the kernel map for the unallocated region */
+        uvm_map_setup(&shadow_map, (vaddr_t)KASAN_SHADOW_START, (vaddr_t)KASAN_SHADOW_END, VM_MAP_PAGEABLE);
+        shadow_map.pmap = pmap_kernel(); //Not sure about this
+
+        /* Might need to add a check to see if everything worked properly */
+
+        /* Map setup done - now to prepare it */
+
+        //uvm_map_prepare()
+
+        /* Map is ready - now we can allocate the shadow buffer */
+
+//	shadow_begin = (void *)VM_MIN_KERNEL_ADDRESS;
+//        shadow_end = (void *)VM_MAX_KERNEL_ADDRESS; //Temp Need to update
+
 	/* Allocate zero pages for the shadow region */
-        //uvm_km_alloc(kernel_map, (void *)KASAN_SHADOW_START,  UVM_KMF_WIRED|UVM_KMF_ZERO);
+
+        /* We wll do the sections as in Linux */
+
+        /* User space */
+        vm_map_setmin(&shadow_map, KASAN_SHADOW_START);
+        uvm_km_alloc(&shadow_map, ((vsize_t)(kasan_mem_to_shadow(L4_BASE)) - KASAN_SHADOW_START), 0, UVM_KMF_ZERO);
+
+        /*
+
+        vm_map_setmin(shadow_map, kasan_mem_to_shadow(L4BASE +  ));
+        uvm_km_alloc(shadow_map, kasan_mem_to_shadow() - kasan_mem_to_shadow(), 0, UVM_KMF_ZERO);
+
+        vm_map_setmin(shadow_map, );
+        uvm_km_alloc(shadow_map, kasan_mem_to_shadow() - kasan_mem_to_shadow(), 0, UVM_KMF_ZERO);
+
+        vm_map_setmin(shadow_map, );
+        uvm_km_alloc(shadow_map, kasan_mem_to_shadow() - kasan_mem_to_shadow(), 0, UVM_KMF_ZERO);
+        */
 }
