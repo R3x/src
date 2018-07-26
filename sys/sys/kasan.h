@@ -12,7 +12,7 @@ struct task_struct;
 #define CONFIG_KASAN_SHADOW_OFFSET 0
 #define KASAN_SHADOW_OFFSET 0UL
 #define KASAN_SHADOW_SCALE_SHIFT 3
-#define __VIRTUAL_MASK_SHIFT 48
+#define __VIRTUAL_MASK_SHIFT 47
 
 /*
  * Compiler uses shadow offset assuming that addresses start
@@ -20,9 +20,7 @@ struct task_struct;
  * for kernel really starts from compiler's shadow offset +
  * 'kernel address space start' >> KASAN_SHADOW_SCALE_SHIFT
  */
-#define KASAN_SHADOW_START      (KASAN_SHADOW_OFFSET + \
-					((~0UL << __VIRTUAL_MASK_SHIFT) >> \
-						KASAN_SHADOW_SCALE_SHIFT))
+#define KASAN_SHADOW_START      (KASAN_SHADOW_OFFSET + VM_MAX_KERNEL_ADDRESS)
 /*
  * 47 bits for kernel address -> (47 - KASAN_SHADOW_SCALE_SHIFT) bits for shadow
  * 56 bits for kernel address -> (56 - KASAN_SHADOW_SCALE_SHIFT) bits for shadow

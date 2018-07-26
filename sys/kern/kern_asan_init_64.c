@@ -311,7 +311,7 @@ static struct notifier_block kasan_die_notifier = {
 
 	kasan_map_early_shadow(early_top_pgt);
 	kasan_map_early_shadow(init_top_pgt);
- 
+
 }
 
 void kasan_init(void)
@@ -448,6 +448,11 @@ DumpSegments(void)
 unsigned long text_start;
 unsigned long text_end;
 
+#define CPU_ENTRY_AREA_BASE 0xff0000 //temp value
+#define CPU_ENTRY_AREA_END 0xff0000 //temp value
+#define MAX_BITS 46
+#define MAX_MEM (1UL << MAX_BITS)
+
 void
 kasan_init(void)
 {
@@ -466,20 +471,31 @@ kasan_init(void)
 	text_start = kmap[1].vaddr;
 	text_end = kmap[1].vaddr + kmap[1].size;
 
-        /* Initialize the kernel map for the unallocated region */
-        uvm_map_setup(&shadow_map, (vaddr_t)KASAN_SHADOW_START, (vaddr_t)KASAN_SHADOW_END, VM_MAP_PAGEABLE);
+        /* Initialize the kernel map for the unallocated region
+
+	uvm_map_setup(&shadow_map, (vaddr_t)KASAN_SHADOW_START, (vaddr_t)KASAN_SHADOW_END, VM_MAP_PAGEABLE);
         shadow_map.pmap = pmap_kernel(); //Not sure about this
 
-        /* Might need to add a check to see if everything worked properly */
+         Might need to add a check to see if everything worked properly
 
-        /* Map setup done - now to prepare it */
+         Map setup done - now to prepare it
 
-        //uvm_map_prepare()
+	error = uvm_map_prepare(&shadow_map,
+	    kmembase, kmemsize,
+	    NULL, UVM_UNKNOWN_OFFSET, 0,
+	    UVM_MAPFLAG(UVM_PROT_ALL, UVM_PROT_ALL, UVM_INH_NONE,
+	    		UVM_ADV_RANDOM, UVM_FLAG_FIXED), NULL);
+	if (!error) {
+		kernel_kmem_mapent_store.flags =
+		    UVM_MAP_KERNEL | UVM_MAP_STATIC | UVM_MAP_NOMERGE;
+	}
+
+	*/
+
+	uvm_map(&shadow_map, (vaddr_t *)KASAN_SHADOW_START, (size_t)(KASAN_SHADOW_END - KASAN_SHADOW_START), NULL, UVM_UNKNOWN_OFFSET, 0, UVM_MAPFLAG(UVM_PROT_ALL, UVM_PROT_ALL, UVM_INH_NONE, UVM_ADV_RANDOM, UVM_FLAG_FIXED));
 
         /* Map is ready - now we can allocate the shadow buffer */
 
-//	shadow_begin = (void *)VM_MIN_KERNEL_ADDRESS;
-//        shadow_end = (void *)VM_MAX_KERNEL_ADDRESS; //Temp Need to update
 
 	/* Allocate zero pages for the shadow region */
 
@@ -489,15 +505,19 @@ kasan_init(void)
         vm_map_setmin(&shadow_map, KASAN_SHADOW_START);
         uvm_km_alloc(&shadow_map, ((vsize_t)(kasan_mem_to_shadow(L4_BASE)) - KASAN_SHADOW_START), 0, UVM_KMF_ZERO);
 
-        /*
+        /* Second region is from  L4_BASE + MAX_MEM to the start of the shadow region */
+        vm_map_setmin(&shadow_map, (unsigned long)kasan_mem_to_shadow(L4_BASE + MAX_MEM));
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)(L4_BASE + MAX_MEM)) - (vsize_t)kasan_mem_to_shadow((void *)CPU_ENTRY_AREA_BASE), 0, UVM_KMF_ZERO);
 
-        vm_map_setmin(shadow_map, kasan_mem_to_shadow(L4BASE +  ));
-        uvm_km_alloc(shadow_map, kasan_mem_to_shadow() - kasan_mem_to_shadow(), 0, UVM_KMF_ZERO);
+        /* The cpu entry region - nid as 0*/
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)CPU_ENTRY_AREA_END) - (vsize_t)kasan_mem_to_shadow((void *)CPU_ENTRY_AREA_BASE), 0, UVM_KMF_ZERO);
 
-        vm_map_setmin(shadow_map, );
-        uvm_km_alloc(shadow_map, kasan_mem_to_shadow() - kasan_mem_to_shadow(), 0, UVM_KMF_ZERO);
+        /* Cpu end region to start of kernel map (KERNBASE)*/
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)CPU_ENTRY_AREA_END) - (vsize_t)kasan_mem_to_shadow((void *)KERNBASE), 0, UVM_KMF_ZERO);
 
-        vm_map_setmin(shadow_map, );
-        uvm_km_alloc(shadow_map, kasan_mem_to_shadow() - kasan_mem_to_shadow(), 0, UVM_KMF_ZERO);
-        */
+        /* The text section - nid as something */
+        vm_map_setmin(&shadow_map, text_start);
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)text_end) - (vsize_t)kasan_mem_to_shadow((void *)text_start), 0, UVM_KMF_ZERO);
+
+        /* Avoiding the Module map for now */
 }
