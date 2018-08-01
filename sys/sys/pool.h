@@ -235,6 +235,12 @@ typedef struct pool_cache_cpu {
 #endif
 } pool_cache_cpu_t;
 
+struct kasan_cache {
+        int alloc_meta_offset;
+        int free_meta_offset;
+};
+
+
 struct pool_cache {
 	/* Pool layer. */
 	struct pool	pc_pool;
@@ -265,6 +271,7 @@ struct pool_cache {
 	bool		pc_redzone;
 	size_t		pc_reqsize;
 
+        struct kasan_cache kasan_info;
 	/* CPU layer. */
 	pool_cache_cpu_t pc_cpu0 __aligned(CACHE_LINE_SIZE);
 	void		*pc_cpus[MAXCPUS] __aligned(CACHE_LINE_SIZE);

@@ -3,11 +3,14 @@
 
 #include <sys/cdefs.h>
 #include <sys/types.h>
+#include <sys/pool.h>
 
 struct kmem_cache;
 struct page;
 struct vm_struct;
 struct task_struct;
+
+typedef uint32_t u32;
 
 #define CONFIG_KASAN_SHADOW_OFFSET 0
 #define KASAN_SHADOW_OFFSET 0UL
@@ -33,7 +36,6 @@ void kasan_early_init(void);
 void kasan_init(void);
 
 //#ifdef CONFIG_KASAN
-
 /*
 extern unsigned char kasan_zero_page[PAGE_SIZE];
 extern pte_t kasan_zero_pte[PTRS_PER_PTE];
@@ -63,42 +65,39 @@ void kasan_unpoison_stack_above_sp_to(const void *watermark);
 
 void kasan_alloc_pages(struct page *page, unsigned int order);
 void kasan_free_pages(struct page *page, unsigned int order);
-/*
-void kasan_cache_create(struct kmem_cache *cache, unsigned int *size,
-			slab_flags_t *flags);
-void kasan_cache_shrink(struct kmem_cache *cache);
-void kasan_cache_shutdown(struct kmem_cache *cache);
+
+void kasan_cache_create(struct pool_cache *cache, unsigned int *size,
+			unsigned int *flags);
+
+void kasan_cache_shrink(struct pool_cache *cache);
+void kasan_cache_shutdown(struct pool_cache *cache);
 
 void kasan_poison_slab(struct page *page);
-void kasan_unpoison_object_data(struct kmem_cache *cache, void *object);
-void kasan_poison_object_data(struct kmem_cache *cache, void *object);
-void kasan_init_slab_obj(struct kmem_cache *cache, const void *object);
+void kasan_unpoison_object_data(struct pool_cache *cache, void *object);
+void kasan_poison_object_data(struct pool_cache *cache, void *object);
+void kasan_init_slab_obj(struct pool_cache *cache, const void *object);
 
-void kasan_kmalloc_large(const void *ptr, size_t size, gfp_t flags);
+void kasan_kmalloc_large(const void *ptr, size_t size, unsigned int flags);
 void kasan_kfree_large(void *ptr, unsigned long ip);
 void kasan_poison_kfree(void *ptr, unsigned long ip);
-void kasan_kmalloc(struct kmem_cache *s, const void *object, size_t size,
-		  gfp_t flags);
-void kasan_krealloc(const void *object, size_t new_size, gfp_t flags);
+void kasan_kmalloc(struct pool_cache *s, const void *object, size_t size,
+		  unsigned int flags);
+void kasan_krealloc(const void *object, size_t new_size, unsigned int flags);
 
-void kasan_slab_alloc(struct kmem_cache *s, void *object, gfp_t flags);
-bool kasan_slab_free(struct kmem_cache *s, void *object, unsigned long ip);
+void kasan_slab_alloc(struct pool_cache *s, void *object, unsigned int flags);
+bool kasan_slab_free(struct pool_cache *s, void *object, unsigned long ip);
 
-struct kasan_cache {
-	int alloc_meta_offset;
-	int free_meta_offset;
-};
 
 int kasan_module_alloc(void *addr, size_t size);
 void kasan_free_shadow(const struct vm_struct *vm);
 
 size_t ksize(const void *);
 static inline void kasan_unpoison_slab(const void *ptr) { ksize(ptr); }
-size_t kasan_metadata_size(struct kmem_cache *cache);
+size_t kasan_metadata_size(struct pool_cache *cache);
 
 bool kasan_save_enable_multi_shot(void);
 void kasan_restore_multi_shot(bool enabled);
-*/
+
 
 #define KASAN_SHADOW_SCALE_SIZE (1UL << KASAN_SHADOW_SCALE_SHIFT)
 #define KASAN_SHADOW_MASK       (KASAN_SHADOW_SCALE_SIZE - 1)
@@ -179,10 +178,10 @@ struct kasan_global {
  */
 
 #define KASAN_STACK_DEPTH 64
-/*
+
 struct kasan_track {
 	u32 pid;
-	depot_stack_handle_t stack;
+//	depot_stack_handle_t stack;
 };
 
 struct kasan_alloc_meta {
@@ -194,17 +193,17 @@ struct qlist_node {
 	struct qlist_node *next;
 };
 struct kasan_free_meta {
-*/	/* This field is used while the object is in the quarantine.
+	/* This field is used while the object is in the quarantine.
 	 * Otherwise it might be used for the allocator freelist.
 	 */
-/*	struct qlist_node quarantine_link;
+	struct qlist_node quarantine_link;
 };
 
-struct kasan_alloc_meta *get_alloc_info(struct kmem_cache *cache,
+struct kasan_alloc_meta *get_alloc_info(struct pool_cache *cache,
 					const void *object);
-struct kasan_free_meta *get_free_info(struct kmem_cache *cache,
+struct kasan_free_meta *get_free_info(struct pool_cache *cache,
 					const void *object);
-*/
+
 static inline const void *kasan_shadow_to_mem(const void *shadow_addr)
 {
 	return (void *)(((unsigned long)shadow_addr - KASAN_SHADOW_OFFSET)
@@ -216,17 +215,17 @@ void kasan_report(unsigned long addr, size_t size,
 void kasan_report_invalid_free(void *object, unsigned long ip);
 /*
 #if defined(CONFIG_SLAB) || defined(CONFIG_SLUB)
-void quarantine_put(struct kasan_free_meta *info, struct kmem_cache *cache);
+void quarantine_put(struct kasan_free_meta *info, struct pool_cache *cache);
 void quarantine_reduce(void);
 */
-void quarantine_remove_cache(struct kmem_cache *cache);
+void quarantine_remove_cache(struct pool_cache *cache);
 /*
 #else
 static inline void quarantine_put(struct kasan_free_meta *info,
-				struct kmem_cache *cache) { }
+				struct pool_cache *cache) { }
 static inline void quarantine_reduce(void) { }
 
-static inline void quarantine_remove_cache(struct kmem_cache *cache) { }
+static inline void quarantine_remove_cache(struct pool_cache *cache) { }
 //#endif
 */
 /*

@@ -106,12 +106,12 @@ static void qlist_move_all(struct qlist_head *from, struct qlist_head *to)
  */
 #define QUARANTINE_FRACTION 32
 /*
-static struct kmem_cache *qlink_to_cache(struct qlist_node *qlink)
+static struct pool_cache *qlink_to_cache(struct qlist_node *qlink)
 {
 	return virt_to_head_page(qlink)->slab_cache;
 }
 
-static void *qlink_to_object(struct qlist_node *qlink, struct kmem_cache *cache)
+static void *qlink_to_object(struct qlist_node *qlink, struct pool_cache *cache)
 {
 	struct kasan_free_meta *free_info =
 		container_of(qlink, struct kasan_free_meta,
@@ -120,7 +120,7 @@ static void *qlink_to_object(struct qlist_node *qlink, struct kmem_cache *cache)
 	return ((void *)free_info) - cache->kasan_info.free_meta_offset;
 }
 
-static void qlink_free(struct qlist_node *qlink, struct kmem_cache *cache)
+static void qlink_free(struct qlist_node *qlink, struct pool_cache *cache)
 {
 	void *object = qlink_to_object(qlink, cache);
 	unsigned long flags;
@@ -134,7 +134,7 @@ static void qlink_free(struct qlist_node *qlink, struct kmem_cache *cache)
 		local_irq_restore(flags);
 }
 
-static void qlist_free_all(struct qlist_head *q, struct kmem_cache *cache)
+static void qlist_free_all(struct qlist_head *q, struct pool_cache *cache)
 {
 	struct qlist_node *qlink;
 
@@ -143,7 +143,7 @@ static void qlist_free_all(struct qlist_head *q, struct kmem_cache *cache)
 
 	qlink = q->head;
 	while (qlink) {
-		struct kmem_cache *obj_cache =
+		struct pool_cache *obj_cache =
 			cache ? cache :	qlink_to_cache(qlink);
 		struct qlist_node *next = qlink->next;
 
@@ -153,7 +153,7 @@ static void qlist_free_all(struct qlist_head *q, struct kmem_cache *cache)
 	qlist_init(q);
 }
 
-void quarantine_put(struct kasan_free_meta *info, struct kmem_cache *cache)
+void quarantine_put(struct kasan_free_meta *info, struct pool_cache *cache)
 {
 	unsigned long flags;
 	struct qlist_head *q;
@@ -245,7 +245,7 @@ void quarantine_reduce(void)
 
 static void qlist_move_cache(struct qlist_head *from,
 				   struct qlist_head *to,
-				   struct kmem_cache *cache)
+				   struct pool_cache *cache)
 {
 	struct qlist_node *curr;
 
@@ -256,7 +256,7 @@ static void qlist_move_cache(struct qlist_head *from,
 	qlist_init(from);
 	while (curr) {
 		struct qlist_node *next = curr->next;
-		struct kmem_cache *obj_cache = qlink_to_cache(curr);
+		struct pool_cache *obj_cache = qlink_to_cache(curr);
 
 		if (obj_cache == cache)
 			qlist_put(to, curr, obj_cache->size);
@@ -269,7 +269,7 @@ static void qlist_move_cache(struct qlist_head *from,
 
 static void per_cpu_remove_cache(void *arg)
 {
-	struct kmem_cache *cache = arg;
+	struct pool_cache *cache = arg;
 	struct qlist_head to_free = QLIST_INIT;
 	struct qlist_head *q;
 
@@ -279,7 +279,7 @@ static void per_cpu_remove_cache(void *arg)
 }
 */
 /* Free all quarantined objects belonging to cache. */
-void quarantine_remove_cache(struct kmem_cache *cache)
+void quarantine_remove_cache(struct pool_cache *cache)
 {/*
 	unsigned long flags, i;
 	struct qlist_head to_free = QLIST_INIT;
