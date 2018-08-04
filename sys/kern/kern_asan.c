@@ -157,7 +157,8 @@ int compound_order(struct page *Page) {
 }
 
 void * nearest_obj(struct pool_cache *, struct page *, void *);
-void * nearest_obj(struct pool_cache *cache, struct page *Page, void *obj) {
+void * nearest_obj(struct pool_cache *cache, struct page *Page, void *obj)
+{
         return (void *)0;
 }
 /*
@@ -184,29 +185,42 @@ void * task_stack_page(struct lwp *task) {
  * Poisons the shadow memory for 'size' bytes starting from 'addr'.
  * Memory addresses should be aligned to KASAN_SHADOW_SCALE_SIZE.
  */
-
 static void
 kasan_poison_shadow(const void *address, size_t size, u8 value)
 {
 	void *shadow_start, *shadow_end;
 
+        /*
+         * Find the shadow offsets of the start and end address
+         */
 	shadow_start = kasan_mem_to_shadow(address);
-	shadow_end = kasan_mem_to_shadow((void *)((uintptr_t)address + size));
+	shadow_end = kasan_mem_to_shadow((void *)((uintptr_t)address + 
+                    size));
 
-	__builtin_memset(shadow_start, value, (char *)shadow_end - (char *)shadow_start);
+        /*
+         * Use memset to populate the region with the given value
+         */
+	__builtin_memset(shadow_start, value, (char *)shadow_end - 
+                (char *)shadow_start);
 }
 
+/*
+ * unpoisons the shadow memory for 'size' bytes starting from 'addr'.
+ * Memory addresses should be aligned to KASAN_SHADOW_SCALE_SIZE.
+ */
 void
 kasan_unpoison_shadow(const void *address, size_t size)
 {
 	kasan_poison_shadow(address, size, 0);
 
 	if (size & KASAN_SHADOW_MASK) {
-		u8 *shadow = (u8 *)kasan_mem_to_shadow((void *)((uintptr_t)address + size));
+		u8 *shadow = (u8 *)kasan_mem_to_shadow((void *)
+                        ((uintptr_t)address + size));
 		*shadow = size & KASAN_SHADOW_MASK;
 	}
 }
 
+/* Unpoison the stack from the page with the stack base */
 static void
 __kasan_unpoison_stack(struct lwp *task, const void *sp)
 {
@@ -217,41 +231,38 @@ __kasan_unpoison_stack(struct lwp *task, const void *sp)
 }
 
 /* Unpoison the entire stack for a task. */
-
 void
 kasan_unpoison_task_stack(struct lwp *task)
 {
-	__kasan_unpoison_stack(task,(void *) ((uintptr_t)task_stack_page(task) + THREAD_SIZE));
+	__kasan_unpoison_stack(task,(void *) 
+                ((uintptr_t)task_stack_page(task) + THREAD_SIZE));
 }
 
 /* Unpoison the stack for the current task beyond a watermark sp value. */
-//asmlinkage -> to
 void
 kasan_unpoison_task_stack_below(const void *watermark)
 {
 
-	/*
-	 * Calculate the task stack base address.  Avoid using 'current'
-	 * because this function is called by early resume code which hasn't
-	 * yet set up the percpu register (%gs).
-	 */
-	void *base = (void *)((unsigned long)watermark & ~(THREAD_SIZE - 1));
+	/* Calculate the task stack base address. */
+	void *base = (void *)((unsigned long)watermark & 
+                ~(THREAD_SIZE - 1));
 
-	kasan_unpoison_shadow(base, (const char *)watermark - (char *)base);
+	kasan_unpoison_shadow(base, (const char *)watermark - 
+                (char *)base);
 }
 
 /*
  * Clear all poison for the region between the current SP and a provided
- * watermark value, as is sometimes required prior to hand-crafted asm function
- * returns in the middle of functions.
+ * watermark value, as is sometimes required prior to hand-crafted 
+ * asm function returns in the middle of functions.
  */
-
 void
 kasan_unpoison_stack_above_sp_to(const void *watermark)
 {
 	const void *sp = __builtin_frame_address(0);
 	size_t size = (const char *)watermark - (const char *)sp;
 
+        /* Make sure that sp is below the watermark */
 //        if (KASSERT(sp <= watermark))
 //        if (KASSERT((int64_t)size < 0 ))
 //                return;
@@ -271,7 +282,8 @@ memory_is_poisoned_1(unsigned long addr)
 
 	if (__predict_false(shadow_value)) {
 		s8 last_accessible_byte = addr & KASAN_SHADOW_MASK;
-		return __predict_false(last_accessible_byte >= shadow_value);
+		return __predict_false(last_accessible_byte >=
+                        shadow_value);
 	}
 
 	return false;
@@ -279,7 +291,7 @@ memory_is_poisoned_1(unsigned long addr)
 
 static __always_inline bool
 memory_is_poisoned_2_4_8(unsigned long addr,
-						unsigned long size)
+    unsigned long size)
 {
 	u8 *shadow_addr = (u8 *)kasan_mem_to_shadow((void *)addr);
 
@@ -287,8 +299,10 @@ memory_is_poisoned_2_4_8(unsigned long addr,
 	 * Access crosses 8(shadow size)-byte boundary. Such access maps
 	 * into 2 shadow bytes, so we need to check them both.
 	 */
-	if (__predict_false(((addr + size - 1) & KASAN_SHADOW_MASK) < size - 1))
-		return *shadow_addr || memory_is_poisoned_1(addr + size - 1);
+	if (__predict_false(((addr + size - 1) & KASAN_SHADOW_MASK)
+                    < size - 1))
+		return *shadow_addr || memory_is_poisoned_1(addr + 
+                        size - 1);
 
 	return memory_is_poisoned_1(addr + size - 1);
 }
@@ -305,6 +319,7 @@ memory_is_poisoned_16(unsigned long addr)
 	return *shadow_addr;
 }
 
+/* Function to make sure that a set of bytes is not zero */
 static __always_inline unsigned long
 bytes_is_nonzero(const u8 *start, size_t size)
 {
@@ -318,6 +333,10 @@ bytes_is_nonzero(const u8 *start, size_t size)
 	return 0;
 }
 
+/*
+ * Function to make sure whether a range of memory in the shadow region is 
+ * non zero to check whether the action being perfomed is legal.
+ */
 static __always_inline unsigned long
 memory_is_nonzero(const void *start, const void *end)
 {
@@ -325,9 +344,15 @@ memory_is_nonzero(const void *start, const void *end)
 	unsigned long ret;
 	unsigned int prefix = (const unsigned long)start % 8;
 
+        /* 
+         * If the size is less that 16 bytes then use bytes_is_nonzero 
+         * since we don't need to care about the allignment at all. 
+         */
 	if ((const char *)end - (const char *)start <= 16)
-		return bytes_is_nonzero(start,(unsigned long)((const char *)end - (const char *)start));
+		return bytes_is_nonzero(start,(unsigned long)
+                        ((const char *)end - (const char *)start));
 
+        /* Check the non aligned bytes and check if they are non zero. */
 	if (prefix) {
 		prefix = 8 - prefix;
 		ret = bytes_is_nonzero(start, prefix);
@@ -336,6 +361,7 @@ memory_is_nonzero(const void *start, const void *end)
 	        start =(void *)((uintptr_t)start + (uintptr_t)prefix);
         }
 
+        /* Check the memory region by taking chunks of 8 bytes each time */
 	words = ((const char *)end - (const char *)start) / 8;
 	while (words) {
 		if (__predict_false(*(const u64 *)start))
@@ -344,23 +370,30 @@ memory_is_nonzero(const void *start, const void *end)
                 words--;
 	}
 
-	return bytes_is_nonzero(start, (unsigned long)((const char *)end - (const char *)start) % 8);
+	return bytes_is_nonzero(start, (unsigned long)((const char *)end - 
+                    (const char *)start) % 8);
 }
 
+/*
+ * Function to make sure that n bytes of memory in the shadow region are 
+ * poisoned according to the request.
+ */
 static __always_inline bool
 memory_is_poisoned_n(unsigned long addr, size_t size)
 {
 	unsigned long ret;
-
+    
 	ret = memory_is_nonzero(kasan_mem_to_shadow((void *)addr),
-			(char *)kasan_mem_to_shadow((void *)(addr + size - 1)) + 1);
+			(char *)kasan_mem_to_shadow((void *)(addr 
+                                + size - 1)) + 1);
 
 	if (__predict_false(ret)) {
 		unsigned long last_byte = addr + size - 1;
 		s8 *last_shadow = (s8 *)kasan_mem_to_shadow((void *)last_byte);
 
 		if (__predict_false(ret != (unsigned long)last_shadow ||
-			((long)(last_byte & KASAN_SHADOW_MASK) >= *last_shadow)))
+			((long)(last_byte & KASAN_SHADOW_MASK) 
+                         >= *last_shadow)))
 			return true;
 	}
 	return false;
