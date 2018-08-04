@@ -66,7 +66,7 @@ void kasan_unpoison_stack_above_sp_to(const void *watermark);
 void kasan_alloc_pages(struct page *page, unsigned int order);
 void kasan_free_pages(struct page *page, unsigned int order);
 
-void kasan_cache_create(struct pool_cache *cache, unsigned int *size,
+void kasan_cache_create(struct pool_cache *cache, size_t *size,
 			unsigned int *flags);
 
 void kasan_cache_shrink(struct pool_cache *cache);

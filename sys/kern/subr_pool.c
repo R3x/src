@@ -55,6 +55,7 @@ __KERNEL_RCSID(0, "$NetBSD: subr_pool.c,v 1.223 2018/07/04 02:19:02 kamil Exp $"
 #include <sys/xcall.h>
 #include <sys/cpu.h>
 #include <sys/atomic.h>
+#include <sys/kasan.h>
 
 #include <uvm/uvm_extern.h>
 
@@ -126,6 +127,7 @@ static kmutex_t pool_allocator_lock;
 typedef uint32_t pool_item_bitmap_t;
 #define	BITMAP_SIZE	(CHAR_BIT * sizeof(pool_item_bitmap_t))
 #define	BITMAP_MASK	(BITMAP_SIZE - 1)
+#define _RET_IP_      (unsigned long)__builtin_return_address(0)
 
 struct pool_item_header {
 	/* Page headers */
@@ -1757,7 +1759,7 @@ pool_cache_init(size_t size, u_int align, u_int align_offset, u_int flags,
 	pc = pool_get(&cache_pool, PR_WAITOK);
 	if (pc == NULL)
 		return NULL;
-
+        kasan_cache_create(pc, &size, &flags);
 	pool_cache_bootstrap(pc, size, align, align_offset, flags, wchan,
 	   palloc, ipl, ctor, dtor, arg);
 
@@ -2318,6 +2320,7 @@ pool_cache_get_paddr(pool_cache_t pc, int flags, paddr_t *pap)
 			break;
 	}
 
+        kasan_slab_alloc(pc, &object, flags);
 	/*
 	 * We would like to KASSERT(object || (flags & PR_NOWAIT)), but
 	 * pool_cache_get can fail even in the PR_WAITOK case, if the
@@ -2445,6 +2448,8 @@ pool_cache_put_paddr(pool_cache_t pc, void *object, paddr_t pa)
 	pool_redzone_check(&pc->pc_pool, object);
 	FREECHECK_IN(&pc->pc_freecheck, object);
 
+        if(kasan_slab_free(pc, object, _RET_IP_))
+                return;
 	/* Lock out interrupts and disable preemption. */
 	s = splvm();
 	while (/* CONSTCOND */ true) {
@@ -2480,6 +2485,7 @@ pool_cache_put_paddr(pool_cache_t pc, void *object, paddr_t pa)
 		if (!pool_cache_put_slow(cc, s, object))
 			break;
 	}
+
 }
 
 /*
