@@ -164,6 +164,9 @@ void * nearest_obj(struct pool_cache *cache, struct page *Page, void *obj) {
  * End of Dummy functions
  */
 
+/*
+ * Start of NetBSD kernel alternatives
+ */
 void * task_stack_page(struct lwp * );
 /*
  * Used to return the page mapping the stack of a lwp
@@ -172,7 +175,9 @@ void * task_stack_page(struct lwp *task) {
         struct pcb *pb = lwp_getpcb(task);
         return (void *)pb->pcb_rbp;
 }
-
+/*
+ * End of NetBSD kernel alternatives 
+ */
 
 
 /*
