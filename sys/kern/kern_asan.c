@@ -48,8 +48,8 @@ typedef uint64_t __le64;
 typedef uint16_t __be16;
 typedef uint32_t __be32;
 typedef uint64_t __be64;
-
 //End of typedefs
+
 
 #define IS_ALIGNED(x, a)(((x) & ((typeof(x))(a) - 1)) == 0)
 #define __round_mask(x, y) ((__typeof__(x))((y)-1))
@@ -57,7 +57,7 @@ typedef uint64_t __be64;
 #define round_down(x, y) ((x) & ~__round_mask(x, y))
 #define THREAD_SIZE 4086
 
-/* I don't see a __memory_barrier in linux 
+/* I don't see a __memory_barrier in linux
 #ifndef barrier
 # define barrier() __memory_barrier()
 #endif
@@ -180,7 +180,8 @@ void * task_stack_page(struct lwp *task) {
  * Memory addresses should be aligned to KASAN_SHADOW_SCALE_SIZE.
  */
 
-static void kasan_poison_shadow(const void *address, size_t size, u8 value)
+static void
+kasan_poison_shadow(const void *address, size_t size, u8 value)
 {
 	void *shadow_start, *shadow_end;
 
@@ -190,7 +191,8 @@ static void kasan_poison_shadow(const void *address, size_t size, u8 value)
 	__builtin_memset(shadow_start, value, (char *)shadow_end - (char *)shadow_start);
 }
 
-void kasan_unpoison_shadow(const void *address, size_t size)
+void
+kasan_unpoison_shadow(const void *address, size_t size)
 {
 	kasan_poison_shadow(address, size, 0);
 
@@ -200,7 +202,8 @@ void kasan_unpoison_shadow(const void *address, size_t size)
 	}
 }
 
-static void __kasan_unpoison_stack(struct lwp *task, const void *sp)
+static void
+__kasan_unpoison_stack(struct lwp *task, const void *sp)
 {
 	void *base = task_stack_page(task);
 	size_t size = (const char *)sp - (const char *)base;
@@ -210,14 +213,16 @@ static void __kasan_unpoison_stack(struct lwp *task, const void *sp)
 
 /* Unpoison the entire stack for a task. */
 
-void kasan_unpoison_task_stack(struct lwp *task)
+void
+kasan_unpoison_task_stack(struct lwp *task)
 {
 	__kasan_unpoison_stack(task,(void *) ((uintptr_t)task_stack_page(task) + THREAD_SIZE));
 }
 
 /* Unpoison the stack for the current task beyond a watermark sp value. */
 //asmlinkage -> to
-void kasan_unpoison_task_stack_below(const void *watermark)
+void
+kasan_unpoison_task_stack_below(const void *watermark)
 {
 
 	/*
@@ -236,7 +241,8 @@ void kasan_unpoison_task_stack_below(const void *watermark)
  * returns in the middle of functions.
  */
 
-void kasan_unpoison_stack_above_sp_to(const void *watermark)
+void
+kasan_unpoison_stack_above_sp_to(const void *watermark)
 {
 	const void *sp = __builtin_frame_address(0);
 	size_t size = (const char *)watermark - (const char *)sp;
@@ -253,7 +259,8 @@ void kasan_unpoison_stack_above_sp_to(const void *watermark)
  * depending on memory access size X.
  */
 
-static __always_inline bool memory_is_poisoned_1(unsigned long addr)
+static __always_inline bool
+memory_is_poisoned_1(unsigned long addr)
 {
 	s8 shadow_value = *(s8 *)kasan_mem_to_shadow((void *)addr);
 
@@ -265,7 +272,8 @@ static __always_inline bool memory_is_poisoned_1(unsigned long addr)
 	return false;
 }
 
-static __always_inline bool memory_is_poisoned_2_4_8(unsigned long addr,
+static __always_inline bool
+memory_is_poisoned_2_4_8(unsigned long addr,
 						unsigned long size)
 {
 	u8 *shadow_addr = (u8 *)kasan_mem_to_shadow((void *)addr);
@@ -280,7 +288,8 @@ static __always_inline bool memory_is_poisoned_2_4_8(unsigned long addr,
 	return memory_is_poisoned_1(addr + size - 1);
 }
 
-static __always_inline bool memory_is_poisoned_16(unsigned long addr)
+static __always_inline bool
+memory_is_poisoned_16(unsigned long addr)
 {
 	u16 *shadow_addr = (u16 *)kasan_mem_to_shadow((void *)addr);
 
@@ -291,8 +300,8 @@ static __always_inline bool memory_is_poisoned_16(unsigned long addr)
 	return *shadow_addr;
 }
 
-static __always_inline unsigned long bytes_is_nonzero(const u8 *start,
-					size_t size)
+static __always_inline unsigned long
+bytes_is_nonzero(const u8 *start, size_t size)
 {
 	while (size) {
 		if (__predict_false(*start))
@@ -304,8 +313,8 @@ static __always_inline unsigned long bytes_is_nonzero(const u8 *start,
 	return 0;
 }
 
-static __always_inline unsigned long memory_is_nonzero(const void *start,
-						const void *end)
+static __always_inline unsigned long
+memory_is_nonzero(const void *start, const void *end)
 {
 	unsigned int words;
 	unsigned long ret;
@@ -333,8 +342,8 @@ static __always_inline unsigned long memory_is_nonzero(const void *start,
 	return bytes_is_nonzero(start, (unsigned long)((const char *)end - (const char *)start) % 8);
 }
 
-static __always_inline bool memory_is_poisoned_n(unsigned long addr,
-						size_t size)
+static __always_inline bool
+memory_is_poisoned_n(unsigned long addr, size_t size)
 {
 	unsigned long ret;
 
@@ -352,7 +361,8 @@ static __always_inline bool memory_is_poisoned_n(unsigned long addr,
 	return false;
 }
 
-static __always_inline bool memory_is_poisoned(unsigned long addr, size_t size)
+static __always_inline bool
+memory_is_poisoned(unsigned long addr, size_t size)
 {
 	if (__builtin_constant_p(size)) {
 		switch (size) {
@@ -372,9 +382,9 @@ static __always_inline bool memory_is_poisoned(unsigned long addr, size_t size)
 	return memory_is_poisoned_n(addr, size);
 }
 
-static __always_inline void check_memory_region_inline(unsigned long addr,
-						size_t size, bool write,
-						unsigned long ret_ip)
+static __always_inline void
+check_memory_region_inline(unsigned long addr, size_t size, bool write,
+	unsigned long ret_ip)
 {
 
 	if (__predict_false(size == 0))
@@ -394,21 +404,23 @@ static __always_inline void check_memory_region_inline(unsigned long addr,
 }
 
 
-static void check_memory_region(unsigned long addr,
-				size_t size, bool write,
-				unsigned long ret_ip)
+static void
+check_memory_region(unsigned long addr, size_t size, bool write,
+	unsigned long ret_ip)
 {
 	check_memory_region_inline(addr, size, write, ret_ip);
 }
 
 void kasan_check_read(const volatile void *, unsigned int);
-void kasan_check_read(const volatile void *p, unsigned int size)
+void
+kasan_check_read(const volatile void *p, unsigned int size)
 {
 	check_memory_region((unsigned long)p, size, false, _RET_IP_);
 }
 
 void kasan_check_write(const volatile void *, unsigned int);
-void kasan_check_write(const volatile void *p, unsigned int size)
+void
+kasan_check_write(const volatile void *p, unsigned int size)
 {
 	check_memory_region((unsigned long)p, size, true, _RET_IP_);
 }
@@ -440,13 +452,15 @@ void *memcpy(void *dest, const void *src, size_t len)
 }
 */
 
-void kasan_alloc_pages(struct page *page, unsigned int order)
+void
+kasan_alloc_pages(struct page *page, unsigned int order)
 {
 	if (__predict_true(!PageHighMem(page)))
 		kasan_unpoison_shadow(page_address(page), PAGE_SIZE << order);
 }
 
-void kasan_free_pages(struct page *page, unsigned int order)
+void
+kasan_free_pages(struct page *page, unsigned int order)
 {
 	if (__predict_true(!PageHighMem(page)))
 		kasan_poison_shadow(page_address(page),
@@ -458,7 +472,8 @@ void kasan_free_pages(struct page *page, unsigned int order)
  * Adaptive redzone policy taken from the userspace AddressSanitizer runtime.
  * For larger allocations larger redzones are used.
  */
-static unsigned int optimal_redzone(unsigned int object_size)
+static unsigned int
+optimal_redzone(unsigned int object_size)
 {
 	return
 		object_size <= 64        - 16   ? 16 :
@@ -470,7 +485,8 @@ static unsigned int optimal_redzone(unsigned int object_size)
 		object_size <= (1 << 16) - 1024 ? 1024 : 2048;
 }
 
-void kasan_cache_create(struct pool_cache *cache, unsigned int *size,
+void
+kasan_cache_create(struct pool_cache *cache, size_t *size,
 			unsigned int *flags)
 {
 	unsigned int orig_size = *size;
@@ -510,18 +526,21 @@ void kasan_cache_create(struct pool_cache *cache, unsigned int *size,
 	*flags |= SLAB_KASAN;
 }
 /*
-void kasan_cache_shrink(struct pool_cache *cache)
+void
+kasan_cache_shrink(struct pool_cache *cache)
 {
 	quarantine_remove_cache(cache);
 }
 
-void kasan_cache_shutdown(struct pool_cache *cache)
+void
+kasan_cache_shutdown(struct pool_cache *cache)
 {
 	if (!__pool_cache_empty(cache))
 		quarantine_remove_cache(cache);
 }
 */
-size_t kasan_metadata_size(struct pool_cache *cache)
+size_t
+kasan_metadata_size(struct pool_cache *cache)
 {
 	return (cache->kasan_info.alloc_meta_offset ?
 		sizeof(struct kasan_alloc_meta) : 0) +
@@ -529,26 +548,31 @@ size_t kasan_metadata_size(struct pool_cache *cache)
 		sizeof(struct kasan_free_meta) : 0);
 }
 
-void kasan_poison_slab(struct page *page)
+void
+kasan_poison_slab(struct page *page)
 {
 	kasan_poison_shadow(page_address(page),
 			PAGE_SIZE << compound_order(page),
 			KASAN_KMALLOC_REDZONE);
 }
 
-void kasan_unpoison_object_data(struct pool_cache *cache, void *object)
+void
+kasan_unpoison_object_data(struct pool_cache *cache, void *object)
 {
 	kasan_unpoison_shadow(object, cache->pc_reqsize);
 }
 
-void kasan_poison_object_data(struct pool_cache *cache, void *object)
+void 
+kasan_poison_object_data(struct pool_cache *cache, void *object)
 {
 	kasan_poison_shadow(object,
 			round_up(cache->pc_reqsize, KASAN_SHADOW_SCALE_SIZE),
 			KASAN_KMALLOC_REDZONE);
 }
+
 /*
-static inline int in_irqentry_text(unsigned long ptr)
+static inline int 
+in_irqentry_text(unsigned long ptr)
 {
 	return (ptr >= (unsigned long)&__irqentry_text_start &&
 		ptr < (unsigned long)&__irqentry_text_end) ||
@@ -556,7 +580,8 @@ static inline int in_irqentry_text(unsigned long ptr)
 		 ptr < (unsigned long)&__softirqentry_text_end);
 }
 
-static inline void filter_irq_stacks(struct stack_trace *trace)
+static inline void 
+filter_irq_stacks(struct stack_trace *trace)
 {
 	int i;
 
@@ -570,7 +595,8 @@ static inline void filter_irq_stacks(struct stack_trace *trace)
 		}
 }
 
-static inline depot_stack_handle_t save_stack(unsigned int flags)
+static inline depot_stack_handle_t 
+save_stack(unsigned int flags)
 {
 	unsigned long entries[KASAN_STACK_DEPTH];
 	struct stack_trace trace = {
@@ -588,15 +614,21 @@ static inline depot_stack_handle_t save_stack(unsigned int flags)
 
 	return depot_save_stack(&trace, flags);
 }
+
 */
-static inline void set_track(struct kasan_track *track, unsigned int flags)
-{/*
-	track->pid = current->pid;
-	track->stack = save_stack(flags);
-*/
+static inline void 
+set_track(struct kasan_track *track, unsigned int flags)
+{
+/*  
+ *      Haven't decided on how to proceed with this yet.
+ *
+ *	track->pid = current->pid;
+ *	track->stack = save_stack(flags);
+ */
 }
 
-struct kasan_alloc_meta *get_alloc_info(struct pool_cache *cache,
+struct kasan_alloc_meta 
+*get_alloc_info(struct pool_cache *cache,
 					const void *object)
 {
 //	BUILD_BUG_ON(sizeof(struct kasan_alloc_meta) > 32);
@@ -604,7 +636,8 @@ struct kasan_alloc_meta *get_alloc_info(struct pool_cache *cache,
         return (void *)0;
 }
 
-struct kasan_free_meta *get_free_info(struct pool_cache *cache,
+struct kasan_free_meta 
+*get_free_info(struct pool_cache *cache,
 				      const void *object)
 {
 //	BUILD_BUG_ON(sizeof(struct kasan_free_meta) > 32);
@@ -612,7 +645,8 @@ struct kasan_free_meta *get_free_info(struct pool_cache *cache,
         return (void *)0;
 }
 
-void kasan_init_slab_obj(struct pool_cache *cache, const void *object)
+void 
+kasan_init_slab_obj(struct pool_cache *cache, const void *object)
 {
 	struct kasan_alloc_meta *alloc_info;
 
@@ -623,12 +657,14 @@ void kasan_init_slab_obj(struct pool_cache *cache, const void *object)
 	__builtin_memset(alloc_info, 0, sizeof(*alloc_info));
 }
 
-void kasan_slab_alloc(struct pool_cache *cache, void *object, unsigned int flags)
+void 
+kasan_slab_alloc(struct pool_cache *cache, void *object, unsigned int flags)
 {
 	kasan_kmalloc(cache, object, cache->pc_reqsize, flags);
 }
 
-static bool __kasan_slab_free(struct pool_cache *cache, void *object,
+static bool 
+__kasan_slab_free(struct pool_cache *cache, void *object,
 			      unsigned long ip, bool quarantine)
 {
 	s8 shadow_byte;
@@ -661,12 +697,14 @@ static bool __kasan_slab_free(struct pool_cache *cache, void *object,
 	return true;
 }
 
-bool kasan_slab_free(struct pool_cache *cache, void *object, unsigned long ip)
+bool 
+kasan_slab_free(struct pool_cache *cache, void *object, unsigned long ip)
 {
 	return __kasan_slab_free(cache, object, ip, true);
 }
 
-void kasan_kmalloc(struct pool_cache *cache, const void *object, size_t size,
+void 
+kasan_kmalloc(struct pool_cache *cache, const void *object, size_t size,
 		   unsigned int flags)
 {
 	unsigned long redzone_start;
@@ -691,7 +729,8 @@ void kasan_kmalloc(struct pool_cache *cache, const void *object, size_t size,
 		set_track(&get_alloc_info(cache, object)->alloc_track, flags);
 }
 
-void kasan_kmalloc_large(const void *ptr, size_t size, unsigned int flags)
+void 
+kasan_kmalloc_large(const void *ptr, size_t size, unsigned int flags)
 {
 	struct page *page;
 	unsigned long redzone_start;
@@ -713,7 +752,8 @@ void kasan_kmalloc_large(const void *ptr, size_t size, unsigned int flags)
 		KASAN_PAGE_REDZONE);
 }
 
-void kasan_krealloc(const void *object, size_t size, unsigned int flags)
+void 
+kasan_krealloc(const void *object, size_t size, unsigned int flags)
 {
 	struct page *page;
 
@@ -728,7 +768,8 @@ void kasan_krealloc(const void *object, size_t size, unsigned int flags)
 //		kasan_kmalloc(page->slab_cache, object, size, flags);
 }
 
-void kasan_poison_kfree(void *ptr, unsigned long ip)
+void 
+kasan_poison_kfree(void *ptr, unsigned long ip)
 {
 	struct page *page;
 
@@ -746,7 +787,8 @@ void kasan_poison_kfree(void *ptr, unsigned long ip)
 	}
 }
 
-void kasan_kfree_large(void *ptr, unsigned long ip)
+void 
+kasan_kfree_large(void *ptr, unsigned long ip)
 {
 	if (ptr != page_address(virt_to_head_page(ptr)))
                 return ;
@@ -783,7 +825,9 @@ int kasan_module_alloc(void *addr, size_t size)
 	return -ENOMEM;
 }
 */
-void kasan_free_shadow(const struct vm_struct *vm)
+
+void 
+kasan_free_shadow(const struct vm_struct *vm)
 {
 /*
 	if (vm->flags & VM_KASAN)
@@ -791,7 +835,8 @@ void kasan_free_shadow(const struct vm_struct *vm)
 */
 }
 
-static void register_global(struct kasan_global *global)
+static void 
+register_global(struct kasan_global *global)
 {
 	size_t aligned_size = round_up(global->size, KASAN_SHADOW_SCALE_SIZE);
 
@@ -802,7 +847,8 @@ static void register_global(struct kasan_global *global)
 		KASAN_GLOBAL_REDZONE);
 }
 
-void __asan_register_globals(struct kasan_global *globals, size_t size)
+void 
+__asan_register_globals(struct kasan_global *globals, size_t size)
 {
 	int i;
 
@@ -810,7 +856,8 @@ void __asan_register_globals(struct kasan_global *globals, size_t size)
 		register_global(&globals[i]);
 }
 
-void __asan_unregister_globals(struct kasan_global *globals, size_t size)
+void 
+__asan_unregister_globals(struct kasan_global *globals, size_t size)
 {
 }
 
@@ -826,7 +873,7 @@ void __asan_unregister_globals(struct kasan_global *globals, size_t size)
         }							\
 	void __asan_store##size(unsigned long addr)		\
 	{\
-check_memory_region_inline(addr, size, true, _RET_IP_);\
+        check_memory_region_inline(addr, size, true, _RET_IP_);\
         }							\
 	void __asan_store##size##_noabort(unsigned long);	\
 	void __asan_store##size##_noabort(unsigned long addr)	\
@@ -841,26 +888,38 @@ DEFINE_ASAN_LOAD_STORE(4);
 DEFINE_ASAN_LOAD_STORE(8);
 DEFINE_ASAN_LOAD_STORE(16);
 
-void __asan_loadN(unsigned long addr, size_t size)
-{}
+void 
+__asan_loadN(unsigned long addr, size_t size)
+{
+        check_memory_region(addr, size, false, _RET_IP_);
+}
 
 void __asan_loadN_noabort(unsigned long, size_t);
-void __asan_loadN_noabort(unsigned long addr, size_t size)
-{}
+void 
+__asan_loadN_noabort(unsigned long addr, size_t size)
+{
+        check_memory_region(addr, size, false, _RET_IP_);
+}
 
 void __asan_storeN(unsigned long addr, size_t size)
-{}
+{
+        check_memory_region(addr, size, true, _RET_IP_);
+}
 
 void __asan_storeN_noabort(unsigned long, size_t);
-void __asan_storeN_noabort(unsigned long addr, size_t size)
-{}
+void 
+__asan_storeN_noabort(unsigned long addr, size_t size)
+{
+        check_memory_region(addr, size, true, _RET_IP_);
+}
 
 /* to shut up compiler complaints */
 
 void __asan_handle_no_return(void) {}
 
 /* Emitted by compiler to poison large objects when they go out of scope. */
-void __asan_poison_stack_memory(const void *addr, size_t size)
+void 
+__asan_poison_stack_memory(const void *addr, size_t size)
 {
 
 	/*
@@ -873,13 +932,15 @@ void __asan_poison_stack_memory(const void *addr, size_t size)
 
 /* Emitted by compiler to unpoison large objects when they go into scope. */
 
-void __asan_unpoison_stack_memory(const void *addr, size_t size)
+void 
+__asan_unpoison_stack_memory(const void *addr, size_t size)
 {
 	kasan_unpoison_shadow(addr, size);
 }
 
 /* Emitted by compiler to poison alloca()ed objects. */
-void __asan_alloca_poison(unsigned long addr, size_t size)
+void 
+__asan_alloca_poison(unsigned long addr, size_t size)
 {
 	size_t rounded_up_size = round_up(size, KASAN_SHADOW_SCALE_SIZE);
 	size_t padding_size = round_up(size, KASAN_ALLOCA_REDZONE_SIZE) -
@@ -902,7 +963,8 @@ void __asan_alloca_poison(unsigned long addr, size_t size)
 }
 
 /* Emitted by compiler to unpoison alloca()ed areas when the stack unwinds. */
-void __asan_allocas_unpoison(const void *stack_top, const void *stack_bottom)
+void 
+__asan_allocas_unpoison(const void *stack_top, const void *stack_bottom)
 {
 	if (__predict_false(!stack_top || stack_top > stack_bottom))
 		return;
