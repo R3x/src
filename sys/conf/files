@@ -1,4 +1,4 @@
-#	$NetBSD: files,v 1.1196 2018/02/27 14:28:01 maxv Exp $
+#	$NetBSD: files,v 1.1200 2018/06/06 18:10:36 jakllsch Exp $
 #	@(#)files.newconf	7.5 (Berkeley) 5/10/93
 
 version 	20171118
@@ -386,6 +386,9 @@ include "dev/hid/files.hid"
 
 # I2C device support
 include "dev/i2c/files.i2c"
+
+# PWM device support
+include "dev/pwm/files.pwm"
 
 # SPI device support
 include "dev/spi/files.spi"
@@ -895,7 +898,7 @@ defflag	opt_com.h		COM_DEBUG
 # XXX In a perfect world, this would be done with attributes
 defflag	opt_com.h		COM_16650 COM_16750
 				COM_HAYESP COM_PXA2X0 COM_AU1X00
-				COM_REGMAP COM_FUNCMAP COM_AWIN
+				COM_REGMAP COM_FUNCMAP
 defparam opt_com.h		COM_TOLERANCE
 device	com { } : tty
 file	dev/ic/com.c			com			needs-flag
@@ -996,6 +999,10 @@ file	dev/ic/rtl81x9.c		rtk | re
 #
 device	re: ether, ifnet, arp, mii
 file	dev/ic/rtl8169.c		re
+
+# Virtual I/O Device (VIRTIO) bus controller and devices
+#
+include "dev/virtio/files.virtio"
 
 # Common code for ESDI/IDE/etc. controllers
 #
@@ -1287,7 +1294,6 @@ device	xhci: usbus, usbroothub, usb_dma
 file	dev/usb/xhci.c			xhci			needs-flag
 
 # Mentor graphics OTG IP
-defflag	opt_motg.h	MOTG_ALLWINNER
 device	motg: usbus, usbroothub
 file	dev/usb/motg.c			motg			needs-flag
 

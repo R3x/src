@@ -1,4 +1,4 @@
-/*	$NetBSD: ip_output.c,v 1.299 2018/03/30 22:54:37 maya Exp $	*/
+/*	$NetBSD: ip_output.c,v 1.306 2018/06/02 11:56:57 maxv Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -91,7 +91,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip_output.c,v 1.299 2018/03/30 22:54:37 maya Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip_output.c,v 1.306 2018/06/02 11:56:57 maxv Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -820,16 +820,14 @@ ip_fragment(struct mbuf *m, struct ifnet *ifp, u_long mtu)
 	int sw_csum = m->m_pkthdr.csum_flags;
 	int fragments = 0;
 	int error = 0;
-	int ipoff;
-	bool mff;
+	int ipoff, ipflg;
 
 	ip = mtod(m, struct ip *);
 	hlen = ip->ip_hl << 2;
 
-	/* XXX: Why don't we remove IP_RF? */
-	ipoff = ntohs(ip->ip_off) & ~IP_MF;
-
-	mff = (ip->ip_off & htons(IP_MF)) != 0;
+	/* Preserve the offset and flags. */
+	ipoff = ntohs(ip->ip_off) & IP_OFFMASK;
+	ipflg = ntohs(ip->ip_off) & (IP_RF|IP_DF|IP_MF);
 
 	if (ifp != NULL)
 		sw_csum &= ~ifp->if_csum_flags_tx;
@@ -865,8 +863,8 @@ ip_fragment(struct mbuf *m, struct ifnet *ifp, u_long mtu)
 		mhip = mtod(m, struct ip *);
 		*mhip = *ip;
 
-		/* we must inherit MCAST and BCAST flags */
-		m->m_flags |= m0->m_flags & (M_MCAST|M_BCAST);
+		/* we must inherit the flags */
+		m->m_flags |= m0->m_flags & M_COPYFLAGS;
 
 		if (hlen > sizeof(struct ip)) {
 			mhlen = ip_optcopy(ip, mhip) + sizeof(struct ip);
@@ -875,8 +873,7 @@ ip_fragment(struct mbuf *m, struct ifnet *ifp, u_long mtu)
 		m->m_len = mhlen;
 
 		mhip->ip_off = ((off - hlen) >> 3) + ipoff;
-		if (mff)
-			mhip->ip_off |= IP_MF;
+		mhip->ip_off |= ipflg;
 		if (off + len >= ntohs(ip->ip_len))
 			len = ntohs(ip->ip_len) - off;
 		else
@@ -980,13 +977,11 @@ in_delayed_cksum(struct mbuf *m)
 	offset += M_CSUM_DATA_IPv4_OFFSET(m->m_pkthdr.csum_data);
 
 	if ((offset + sizeof(u_int16_t)) > m->m_len) {
-		/* This happen when ip options were inserted
-		printf("in_delayed_cksum: pullup len %d off %d proto %d\n",
-		    m->m_len, offset, ip->ip_p);
-		 */
-		m_copyback(m, offset, sizeof(csum), (void *) &csum);
-	} else
+		/* This happens when ip options were inserted */
+		m_copyback(m, offset, sizeof(csum), (void *)&csum);
+	} else {
 		*(u_int16_t *)(mtod(m, char *) + offset) = csum;
+	}
 }
 
 /*
@@ -1018,6 +1013,7 @@ ip_insertoptions(struct mbuf *m, struct mbuf *opt, int *phlen)
 	unsigned optlen;
 
 	optlen = opt->m_len - sizeof(p->ipopt_dst);
+	KASSERT(optlen % 4 == 0);
 	if (optlen + ntohs(ip->ip_len) > IP_MAXPACKET)
 		return m;		/* XXX should fail */
 	if (!in_nullhost(p->ipopt_dst))
@@ -1031,10 +1027,10 @@ ip_insertoptions(struct mbuf *m, struct mbuf *opt, int *phlen)
 		m->m_len -= sizeof(struct ip);
 		m->m_data += sizeof(struct ip);
 		n->m_next = m;
+		n->m_len = optlen + sizeof(struct ip);
+		n->m_data += max_linkhdr;
+		memcpy(mtod(n, void *), ip, sizeof(struct ip));
 		m = n;
-		m->m_len = optlen + sizeof(struct ip);
-		m->m_data += max_linkhdr;
-		bcopy((void *)ip, mtod(m, void *), sizeof(struct ip));
 	} else {
 		m->m_data -= optlen;
 		m->m_len += optlen;
@@ -1042,7 +1038,7 @@ ip_insertoptions(struct mbuf *m, struct mbuf *opt, int *phlen)
 	}
 	m->m_pkthdr.len += optlen;
 	ip = mtod(m, struct ip *);
-	bcopy((void *)p->ipopt_list, (void *)(ip + 1), (unsigned)optlen);
+	memcpy(ip + 1, p->ipopt_list, optlen);
 	*phlen = sizeof(struct ip) + optlen;
 	ip->ip_len = htons(ntohs(ip->ip_len) + optlen);
 	return m;
@@ -1263,7 +1259,7 @@ ip_ctloutput(int op, struct socket *so, struct sockopt *sopt)
 #if defined(IPSEC)
 		case IP_IPSEC_POLICY:
 			if (ipsec_enabled) {
-				error = ipsec_set_policy(inp, sopt->sopt_name,
+				error = ipsec_set_policy(inp,
 				    sopt->sopt_data, sopt->sopt_size,
 				    curlwp->l_cred);
 				break;
@@ -1579,10 +1575,10 @@ ip_pcbopts(struct inpcb *inp, const struct sockopt *sopt)
 	}
 	cp = sopt->sopt_data;
 
-#ifndef	__vax__
-	if (cnt % sizeof(int32_t))
+	if (cnt % 4) {
+		/* Must be 4-byte aligned, because there's no padding. */
 		return EINVAL;
-#endif
+	}
 
 	m = m_get(M_DONTWAIT, MT_SOOPTS);
 	if (m == NULL)
@@ -1822,12 +1818,13 @@ ip_add_membership(struct ip_moptions *imo, const struct sockopt *sopt)
 	bound = curlwp_bind();
 	if (sopt->sopt_size == sizeof(struct ip_mreq))
 		error = ip_get_membership(sopt, &ifp, &psref, &ia, true);
-	else
+	else {
 #ifdef INET6
 		error = ip6_get_membership(sopt, &ifp, &psref, &ia, sizeof(ia));
 #else
 		error = EINVAL;
 #endif
+	}
 
 	if (error)
 		goto out;
@@ -1902,7 +1899,6 @@ ip_drop_membership(struct ip_moptions *imo, const struct sockopt *sopt)
 		error = ip6_get_membership(sopt, &ifp, &psref, &ia, sizeof(ia));
 #else
 		error = EINVAL;
-		goto out;
 #endif
 	}
 

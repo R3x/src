@@ -1,4 +1,4 @@
-/*	$NetBSD: netbsd32.h,v 1.116 2017/12/18 00:33:32 mrg Exp $	*/
+/*	$NetBSD: netbsd32.h,v 1.118 2018/05/10 02:36:07 christos Exp $	*/
 
 /*
  * Copyright (c) 1998, 2001, 2008, 2015 Matthew R. Green
@@ -50,6 +50,7 @@
 #include <compat/sys/mount.h>
 #include <compat/sys/signal.h>
 #include <compat/sys/siginfo.h>
+#include <compat/common/compat_util.h>
 
 #include <nfs/rpcv2.h>
 
@@ -714,6 +715,12 @@ struct netbsd32_omsghdr {
 	int		 msg_accrightslen;
 };
 
+typedef netbsd32_pointer_t netbsd32_mmsghdrp_t;
+struct netbsd32_mmsghdr {
+	struct netbsd32_msghdr msg_hdr;
+	unsigned int msg_len;
+};
+
 /* from <sys/stat.h> */
 typedef netbsd32_pointer_t netbsd32_stat12p_t;
 struct netbsd32_stat12 {		/* NetBSD-1.2 stat struct */
@@ -1122,8 +1129,6 @@ int	coredump_netbsd32(struct lwp *, struct coredump_iostate *);
 /*
  * random other stuff
  */
-#include <compat/common/compat_util.h>
-#include <compat/sys/siginfo.h>
 
 vaddr_t netbsd32_vm_default_addr(struct proc *, vaddr_t, vsize_t, int);
 void netbsd32_adjust_limits(struct proc *);

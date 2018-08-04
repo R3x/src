@@ -1,4 +1,4 @@
-/* $NetBSD: gic_fdt.c,v 1.8 2017/11/30 14:42:37 skrll Exp $ */
+/* $NetBSD: gic_fdt.c,v 1.11 2018/07/03 12:12:03 jmcneill Exp $ */
 
 /*-
  * Copyright (c) 2015-2017 Jared McNeill <jmcneill@invisible.ca>
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: gic_fdt.c,v 1.8 2017/11/30 14:42:37 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: gic_fdt.c,v 1.11 2018/07/03 12:12:03 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -75,11 +75,13 @@ struct gic_fdt_irqhandler {
 struct gic_fdt_irq {
 	struct gic_fdt_softc	*intr_sc;
 	void			*intr_ih;
+	void			*intr_arg;
 	int			intr_refcnt;
 	int			intr_ipl;
 	int			intr_level;
 	int			intr_mpsafe;
 	TAILQ_HEAD(, gic_fdt_irqhandler) intr_handlers;
+	int			intr_irq;
 };
 
 struct gic_fdt_softc {
@@ -139,8 +141,9 @@ gic_fdt_attach(device_t parent, device_t self, void *aux)
 		return;
 	}
 
-	const bus_addr_t addr = addr_d;
-	const bus_size_t size = (addr_c + size_c) - addr_d;
+	const bus_addr_t addr = min(addr_d, addr_c);
+	const bus_size_t end = max(addr_d + size_d, addr_c + size_c);
+	const bus_size_t size = end - addr;
 
 	error = bus_space_map(faa->faa_bst, addr, size, 0, &bsh);
 	if (error) {
@@ -152,8 +155,8 @@ gic_fdt_attach(device_t parent, device_t self, void *aux)
 		.mpcaa_name = "armgic",
 		.mpcaa_memt = faa->faa_bst,
 		.mpcaa_memh = bsh,
-		.mpcaa_off1 = 0,
-		.mpcaa_off2 = addr_c - addr_d
+		.mpcaa_off1 = addr_d - addr,
+		.mpcaa_off2 = addr_c - addr,
 	};
 
 	config_found(self, &mpcaa, NULL);
@@ -186,10 +189,12 @@ gic_fdt_establish(device_t dev, u_int *specifier, int ipl, int flags,
 		firq = kmem_alloc(sizeof(*firq), KM_SLEEP);
 		firq->intr_sc = sc;
 		firq->intr_refcnt = 0;
+		firq->intr_arg = arg;
 		firq->intr_ipl = ipl;
 		firq->intr_level = level;
 		firq->intr_mpsafe = mpsafe;
 		TAILQ_INIT(&firq->intr_handlers);
+		firq->intr_irq = irq;
 		if (arg == NULL) {
 			firq->intr_ih = intr_establish(irq, ipl, level | mpsafe,
 			    func, NULL);
@@ -203,7 +208,7 @@ gic_fdt_establish(device_t dev, u_int *specifier, int ipl, int flags,
 		}
 		sc->sc_irq[irq] = firq;
 	} else {
-		if (arg) {
+		if (firq->intr_arg == NULL && arg != NULL) {
 			device_printf(dev, "cannot share irq with NULL arg\n");
 			return NULL;
 		}
@@ -239,8 +244,10 @@ gic_fdt_establish(device_t dev, u_int *specifier, int ipl, int flags,
 static void
 gic_fdt_disestablish(device_t dev, void *ih)
 {
+	struct gic_fdt_softc * const sc = device_private(dev);
 	struct gic_fdt_irqhandler *firqh = ih;
 	struct gic_fdt_irq *firq = firqh->ih_irq;
+	const int irq = firq->intr_irq;
 
 	KASSERT(firq->intr_refcnt > 0);
 
@@ -251,6 +258,7 @@ gic_fdt_disestablish(device_t dev, void *ih)
 	if (firq->intr_refcnt == 0) {
 		intr_disestablish(firq->intr_ih);
 		kmem_free(firq, sizeof(*firq));
+		sc->sc_irq[irq] = NULL;
 	}
 }
 

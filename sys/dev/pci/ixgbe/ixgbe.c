@@ -1,4 +1,4 @@
-/* $NetBSD: ixgbe.c,v 1.140 2018/03/30 06:44:30 msaitoh Exp $ */
+/* $NetBSD: ixgbe.c,v 1.163 2018/07/06 02:36:35 msaitoh Exp $ */
 
 /******************************************************************************
 
@@ -32,7 +32,7 @@
   POSSIBILITY OF SUCH DAMAGE.
 
 ******************************************************************************/
-/*$FreeBSD: head/sys/dev/ixgbe/if_ix.c 320916 2017-07-12 17:35:32Z sbruno $*/
+/*$FreeBSD: head/sys/dev/ixgbe/if_ix.c 331224 2018-03-19 20:55:05Z erj $*/
 
 /*
  * Copyright (c) 2011 The NetBSD Foundation, Inc.
@@ -80,7 +80,7 @@
 /************************************************************************
  * Driver version
  ************************************************************************/
-char ixgbe_driver_version[] = "3.2.12-k";
+static const char ixgbe_driver_version[] = "4.0.1-k";
 
 
 /************************************************************************
@@ -92,7 +92,7 @@ char ixgbe_driver_version[] = "3.2.12-k";
  *
  *   { Vendor ID, Device ID, SubVendor ID, SubDevice ID, String Index }
  ************************************************************************/
-static ixgbe_vendor_info_t ixgbe_vendor_info_array[] =
+static const ixgbe_vendor_info_t ixgbe_vendor_info_array[] =
 {
 	{IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82598AF_DUAL_PORT, 0, 0, 0},
 	{IXGBE_INTEL_VENDOR_ID, IXGBE_DEV_ID_82598AF_SINGLE_PORT, 0, 0, 0},
@@ -191,7 +191,9 @@ static void	ixgbe_config_delay_values(struct adapter *);
 static void	ixgbe_config_link(struct adapter *);
 static void	ixgbe_check_wol_support(struct adapter *);
 static int	ixgbe_setup_low_power_mode(struct adapter *);
+#if 0
 static void	ixgbe_rearm_queues(struct adapter *, u64);
+#endif
 
 static void     ixgbe_initialize_transmit_units(struct adapter *);
 static void     ixgbe_initialize_receive_units(struct adapter *);
@@ -208,7 +210,7 @@ static void     ixgbe_update_link_status(struct adapter *);
 static void	ixgbe_set_ivar(struct adapter *, u8, u8, s8);
 static void	ixgbe_configure_ivars(struct adapter *);
 static u8 *	ixgbe_mc_array_itr(struct ixgbe_hw *, u8 **, u32 *);
-static void	ixgbe_eitr_write(struct ix_queue *, uint32_t);
+static void	ixgbe_eitr_write(struct adapter *, uint32_t, uint32_t);
 
 static void	ixgbe_setup_vlan_hw_support(struct adapter *);
 #if 0
@@ -236,11 +238,13 @@ static int	ixgbe_sysctl_phy_overtemp_occurred(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_power_state(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_print_rss_config(SYSCTLFN_PROTO);
 #endif
+static int      ixgbe_sysctl_next_to_check_handler(SYSCTLFN_PROTO);
 static int      ixgbe_sysctl_rdh_handler(SYSCTLFN_PROTO);
 static int      ixgbe_sysctl_rdt_handler(SYSCTLFN_PROTO);
 static int      ixgbe_sysctl_tdt_handler(SYSCTLFN_PROTO);
 static int      ixgbe_sysctl_tdh_handler(SYSCTLFN_PROTO);
 static int      ixgbe_sysctl_eee_state(SYSCTLFN_PROTO);
+static int	ixgbe_sysctl_debug(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_wol_enable(SYSCTLFN_PROTO);
 static int	ixgbe_sysctl_wufc(SYSCTLFN_PROTO);
 
@@ -264,7 +268,7 @@ static void	ixgbe_handle_phy(void *);
 /* Workqueue handler for deferred work */
 static void	ixgbe_handle_que_work(struct work *, void *);
 
-static ixgbe_vendor_info_t *ixgbe_lookup(const struct pci_attach_args *);
+static const ixgbe_vendor_info_t *ixgbe_lookup(const struct pci_attach_args *);
 
 /************************************************************************
  *  NetBSD Device Interface Entry Points
@@ -389,9 +393,6 @@ SYSCTL_INT(_hw_ix, OID_AUTO, enable_legacy_tx, CTLFLAG_RDTUN,
 static int ixgbe_enable_rss = 1;
 SYSCTL_INT(_hw_ix, OID_AUTO, enable_rss, CTLFLAG_RDTUN, &ixgbe_enable_rss, 0,
     "Enable Receive-Side Scaling (RSS)");
-
-/* Keep running tab on them for sanity check */
-static int ixgbe_total_ports;
 
 #if 0
 static int (*ixgbe_start_locked)(struct ifnet *, struct tx_ring *);
@@ -581,7 +582,7 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 
 	for (i = 0; i < adapter->num_queues; i++, rxr++) {
 		u64 rdba = rxr->rxdma.dma_paddr;
-		u32 tqsmreg, reg;
+		u32 reg;
 		int regnum = i / 4;	/* 1 register per 4 queues */
 		int regshift = i % 4;	/* 4 bits per 1 queue */
 		j = rxr->me;
@@ -605,20 +606,6 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 		reg &= ~(0x000000ff << (regshift * 8));
 		reg |= i << (regshift * 8);
 		IXGBE_WRITE_REG(hw, IXGBE_RQSMR(regnum), reg);
-
-		/*
-		 * Set RQSMR (Receive Queue Statistic Mapping) register.
-		 * Register location for queue 0...7 are different between
-		 * 82598 and newer.
-		 */
-		if (adapter->hw.mac.type == ixgbe_mac_82598EB)
-			tqsmreg = IXGBE_TQSMR(regnum);
-		else
-			tqsmreg = IXGBE_TQSM(regnum);
-		reg = IXGBE_READ_REG(hw, tqsmreg);
-		reg &= ~(0x000000ff << (regshift * 8));
-		reg |= i << (regshift * 8);
-		IXGBE_WRITE_REG(hw, tqsmreg, reg);
 
 		/*
 		 * Set DROP_EN iff we have no flow control and >1 queue.
@@ -669,7 +656,6 @@ ixgbe_initialize_receive_units(struct adapter *adapter)
 
 	IXGBE_WRITE_REG(hw, IXGBE_RXCSUM, rxcsum);
 
-	return;
 } /* ixgbe_initialize_receive_units */
 
 /************************************************************************
@@ -680,11 +666,15 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 {
 	struct tx_ring  *txr = adapter->tx_rings;
 	struct ixgbe_hw	*hw = &adapter->hw;
+	int i;
 
 	/* Setup the Base and Length of the Tx Descriptor Ring */
-	for (int i = 0; i < adapter->num_queues; i++, txr++) {
+	for (i = 0; i < adapter->num_queues; i++, txr++) {
 		u64 tdba = txr->txdma.dma_paddr;
 		u32 txctrl = 0;
+		u32 tqsmreg, reg;
+		int regnum = i / 4;	/* 1 register per 4 queues */
+		int regshift = i % 4;	/* 4 bits per 1 queue */
 		int j = txr->me;
 
 		IXGBE_WRITE_REG(hw, IXGBE_TDBAL(j),
@@ -693,12 +683,27 @@ ixgbe_initialize_transmit_units(struct adapter *adapter)
 		IXGBE_WRITE_REG(hw, IXGBE_TDLEN(j),
 		    adapter->num_tx_desc * sizeof(union ixgbe_adv_tx_desc));
 
+		/*
+		 * Set TQSMR (Transmit Queue Statistic Mapping) register.
+		 * Register location is different between 82598 and others.
+		 */
+		if (adapter->hw.mac.type == ixgbe_mac_82598EB)
+			tqsmreg = IXGBE_TQSMR(regnum);
+		else
+			tqsmreg = IXGBE_TQSM(regnum);
+		reg = IXGBE_READ_REG(hw, tqsmreg);
+		reg &= ~(0x000000ff << (regshift * 8));
+		reg |= i << (regshift * 8);
+		IXGBE_WRITE_REG(hw, tqsmreg, reg);
+
 		/* Setup the HW Tx Head and Tail descriptor pointers */
 		IXGBE_WRITE_REG(hw, IXGBE_TDH(j), 0);
 		IXGBE_WRITE_REG(hw, IXGBE_TDT(j), 0);
 
 		/* Cache the tail address */
 		txr->tail = IXGBE_TDT(j);
+
+		txr->txr_no_space = false;
 
 		/* Disable Head Writeback */
 		/*
@@ -763,7 +768,7 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 	u32		ctrl_ext;
 	u16		high, low, nvmreg;
 	pcireg_t	id, subid;
-	ixgbe_vendor_info_t *ent;
+	const ixgbe_vendor_info_t *ent;
 	struct pci_attach_args *pa = aux;
 	const char *str;
 	char buf[256];
@@ -827,7 +832,7 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 	/*
 	 * Initialize the shared code
 	 */
-	if (ixgbe_init_shared_code(hw)) {
+	if (ixgbe_init_shared_code(hw) != 0) {
 		aprint_error_dev(dev, "Unable to initialize the shared code\n");
 		error = ENXIO;
 		goto err_out;
@@ -922,21 +927,6 @@ ixgbe_attach(device_t parent, device_t dev, void *aux)
 		adapter->num_tx_desc = DEFAULT_TXD;
 	} else
 		adapter->num_tx_desc = ixgbe_txd;
-
-	/*
-	 * With many RX rings it is easy to exceed the
-	 * system mbuf allocation. Tuning nmbclusters
-	 * can alleviate this.
-	 */
-	if (nmbclusters > 0) {
-		int s;
-		s = (ixgbe_rxd * adapter->num_queues) * ixgbe_total_ports;
-		if (s > nmbclusters) {
-			aprint_error_dev(dev, "RX Descriptors exceed "
-			    "system mbuf max, using default instead!\n");
-			ixgbe_rxd = DEFAULT_RXD;
-		}
-	}
 
 	if (((ixgbe_rxd * sizeof(union ixgbe_adv_rx_desc)) % DBA_ALIGN) != 0 ||
 	    ixgbe_rxd < MIN_RXD || ixgbe_rxd > MAX_RXD) {
@@ -1311,7 +1301,6 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 	 * We use per TX queue softint, so if_deferred_start_init() isn't
 	 * used.
 	 */
-	if_register(ifp);
 	ether_set_ifflags_cb(ec, ixgbe_ifflags_cb);
 
 	adapter->max_frame_size = ifp->if_mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
@@ -1359,6 +1348,8 @@ ixgbe_setup_interface(device_t dev, struct adapter *adapter)
 
 	/* Set autoselect media by default */
 	ifmedia_set(&adapter->media, IFM_ETHER | IFM_AUTO);
+
+	if_register(ifp);
 
 	return (0);
 } /* ixgbe_setup_interface */
@@ -1466,23 +1457,23 @@ ixgbe_is_sfp(struct ixgbe_hw *hw)
 	switch (hw->mac.type) {
 	case ixgbe_mac_82598EB:
 		if (hw->phy.type == ixgbe_phy_nl)
-			return TRUE;
-		return FALSE;
+			return (TRUE);
+		return (FALSE);
 	case ixgbe_mac_82599EB:
 		switch (hw->mac.ops.get_media_type(hw)) {
 		case ixgbe_media_type_fiber:
 		case ixgbe_media_type_fiber_qsfp:
-			return TRUE;
+			return (TRUE);
 		default:
-			return FALSE;
+			return (FALSE);
 		}
 	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X550EM_a:
 		if (hw->mac.ops.get_media_type(hw) == ixgbe_media_type_fiber)
-			return TRUE;
-		return FALSE;
+			return (TRUE);
+		return (FALSE);
 	default:
-		return FALSE;
+		return (FALSE);
 	}
 } /* ixgbe_is_sfp */
 
@@ -1500,35 +1491,39 @@ ixgbe_config_link(struct adapter *adapter)
 
 	if (sfp) { 
 		if (hw->phy.multispeed_fiber) {
-			hw->mac.ops.setup_sfp(hw);
 			ixgbe_enable_tx_laser(hw);
 			kpreempt_disable();
 			softint_schedule(adapter->msf_si);
 			kpreempt_enable();
-		} else {
-			kpreempt_disable();
-			softint_schedule(adapter->mod_si);
-			kpreempt_enable();
 		}
+		kpreempt_disable();
+		softint_schedule(adapter->mod_si);
+		kpreempt_enable();
 	} else {
+		struct ifmedia  *ifm = &adapter->media;
+
 		if (hw->mac.ops.check_link)
 			err = ixgbe_check_link(hw, &adapter->link_speed,
 			    &adapter->link_up, FALSE);
 		if (err)
-			goto out;
+			return;
+
+		/*
+		 * Check if it's the first call. If it's the first call,
+		 * get value for auto negotiation.
+		 */
 		autoneg = hw->phy.autoneg_advertised;
-		if ((!autoneg) && (hw->mac.ops.get_link_capabilities))
+		if ((IFM_SUBTYPE(ifm->ifm_cur->ifm_media) != IFM_NONE)
+		    && ((!autoneg) && (hw->mac.ops.get_link_capabilities)))
                 	err = hw->mac.ops.get_link_capabilities(hw, &autoneg,
 			    &negotiate);
 		if (err)
-			goto out;
+			return;
 		if (hw->mac.ops.setup_link)
                 	err = hw->mac.ops.setup_link(hw, autoneg,
 			    adapter->link_up);
 	}
-out:
 
-	return;
 } /* ixgbe_config_link */
 
 /************************************************************************
@@ -1552,16 +1547,24 @@ ixgbe_update_stats_counters(struct adapter *adapter)
 	if (hw->mac.type == ixgbe_mac_X550)
 		stats->mbsdc.ev_count += IXGBE_READ_REG(hw, IXGBE_MBSDC);
 
+	/* 16 registers */
 	for (int i = 0; i < __arraycount(stats->qprc); i++) {
 		int j = i % adapter->num_queues;
+
 		stats->qprc[j].ev_count += IXGBE_READ_REG(hw, IXGBE_QPRC(i));
 		stats->qptc[j].ev_count += IXGBE_READ_REG(hw, IXGBE_QPTC(i));
-		stats->qprdc[j].ev_count += IXGBE_READ_REG(hw, IXGBE_QPRDC(i));
+		if (hw->mac.type >= ixgbe_mac_82599EB) {
+			stats->qprdc[j].ev_count
+			    += IXGBE_READ_REG(hw, IXGBE_QPRDC(i));
+		}
 	}
+
+	/* 8 registers */
 	for (int i = 0; i < __arraycount(stats->mpc); i++) {
 		uint32_t mp;
 		int j = i % adapter->num_queues;
 
+		/* MPC */
 		mp = IXGBE_READ_REG(hw, IXGBE_MPC(i));
 		/* global total per queue */
 		stats->mpc[j].ev_count += mp;
@@ -1571,7 +1574,24 @@ ixgbe_update_stats_counters(struct adapter *adapter)
 		if (hw->mac.type == ixgbe_mac_82598EB)
 			stats->rnbc[j].ev_count
 			    += IXGBE_READ_REG(hw, IXGBE_RNBC(i));
-		
+
+		stats->pxontxc[j].ev_count
+		    += IXGBE_READ_REG(hw, IXGBE_PXONTXC(i));
+		stats->pxofftxc[j].ev_count
+		    += IXGBE_READ_REG(hw, IXGBE_PXOFFTXC(i));
+		if (hw->mac.type >= ixgbe_mac_82599EB) {
+			stats->pxonrxc[j].ev_count
+			    += IXGBE_READ_REG(hw, IXGBE_PXONRXCNT(i));
+			stats->pxoffrxc[j].ev_count
+			    += IXGBE_READ_REG(hw, IXGBE_PXOFFRXCNT(i));
+			stats->pxon2offc[j].ev_count
+			    += IXGBE_READ_REG(hw, IXGBE_PXON2OFFCNT(i));
+		} else {
+			stats->pxonrxc[j].ev_count
+			    += IXGBE_READ_REG(hw, IXGBE_PXONRXC(i));
+			stats->pxoffrxc[j].ev_count
+			    += IXGBE_READ_REG(hw, IXGBE_PXOFFRXC(i));
+		}
 	}
 	stats->mpctotal.ev_count += total_missed_rx;
 
@@ -1687,6 +1707,7 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbe_hw_stats *stats = &adapter->stats.pf;
 	const char *xname = device_xname(dev);
+	int i;
 
 	/* Driver Statistics */
 	evcnt_attach_dynamic(&adapter->efbig_tx_dma_setup, EVCNT_TYPE_MISC,
@@ -1718,7 +1739,7 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 	evcnt_attach_dynamic(&adapter->phy_sicount, EVCNT_TYPE_INTR,
 	    NULL, xname, "external PHY softint");
 
-	for (int i = 0; i < adapter->num_queues; i++, rxr++, txr++) {
+	for (i = 0; i < adapter->num_queues; i++, rxr++, txr++) {
 #ifdef LRO
 		struct lro_ctrl *lro = &rxr->lro;
 #endif /* LRO */
@@ -1785,6 +1806,14 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 		if (sysctl_createv(log, 0, &rnode, &cnode,
 		    CTLFLAG_READONLY,
 		    CTLTYPE_INT,
+		    "rxd_nxck", SYSCTL_DESCR("Receive Descriptor next to check"),
+			ixgbe_sysctl_next_to_check_handler, 0, (void *)rxr, 0,
+		    CTL_CREATE, CTL_EOL) != 0)
+			break;
+
+		if (sysctl_createv(log, 0, &rnode, &cnode,
+		    CTLFLAG_READONLY,
+		    CTLTYPE_INT,
 		    "rxd_head", SYSCTL_DESCR("Receive Descriptor Head"),
 		    ixgbe_sysctl_rdh_handler, 0, (void *)rxr, 0,
 		    CTL_CREATE, CTL_EOL) != 0)
@@ -1821,8 +1850,10 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 			evcnt_attach_dynamic(&stats->pxoffrxc[i],
 			    EVCNT_TYPE_MISC, NULL, adapter->queues[i].evnamebuf,
 			    "pxoffrxc");
-			evcnt_attach_dynamic(&stats->pxon2offc[i],
-			    EVCNT_TYPE_MISC, NULL, adapter->queues[i].evnamebuf,
+			if (hw->mac.type >= ixgbe_mac_82599EB)
+				evcnt_attach_dynamic(&stats->pxon2offc[i],
+				    EVCNT_TYPE_MISC, NULL,
+				    adapter->queues[i].evnamebuf,
 			    "pxon2offc");
 		}
 		if (i < __arraycount(stats->qprc)) {
@@ -1838,9 +1869,10 @@ ixgbe_add_hw_stats(struct adapter *adapter)
 			evcnt_attach_dynamic(&stats->qbtc[i],
 			    EVCNT_TYPE_MISC, NULL, adapter->queues[i].evnamebuf,
 			    "qbtc");
-			evcnt_attach_dynamic(&stats->qprdc[i],
-			    EVCNT_TYPE_MISC, NULL, adapter->queues[i].evnamebuf,
-			    "qprdc");
+			if (hw->mac.type >= ixgbe_mac_82599EB)
+				evcnt_attach_dynamic(&stats->qprdc[i],
+				    EVCNT_TYPE_MISC, NULL,
+				    adapter->queues[i].evnamebuf, "qprdc");
 		}
 
 		evcnt_attach_dynamic(&rxr->rx_packets, EVCNT_TYPE_MISC,
@@ -2029,14 +2061,16 @@ ixgbe_clear_evcnt(struct adapter *adapter)
 			stats->pxonrxc[i].ev_count = 0;
 			stats->pxofftxc[i].ev_count = 0;
 			stats->pxoffrxc[i].ev_count = 0;
-			stats->pxon2offc[i].ev_count = 0;
+			if (hw->mac.type >= ixgbe_mac_82599EB)
+				stats->pxon2offc[i].ev_count = 0;
 		}
 		if (i < __arraycount(stats->qprc)) {
 			stats->qprc[i].ev_count = 0;
 			stats->qptc[i].ev_count = 0;
 			stats->qbrc[i].ev_count = 0;
 			stats->qbtc[i].ev_count = 0;
-			stats->qprdc[i].ev_count = 0;
+			if (hw->mac.type >= ixgbe_mac_82599EB)
+				stats->qprdc[i].ev_count = 0;
 		}
 
 		rxr->rx_packets.ev_count = 0;
@@ -2140,6 +2174,27 @@ ixgbe_sysctl_tdt_handler(SYSCTLFN_ARGS)
 	node.sysctl_data = &val;
 	return sysctl_lookup(SYSCTLFN_CALL(&node));
 } /* ixgbe_sysctl_tdt_handler */
+
+/************************************************************************
+ * ixgbe_sysctl_next_to_check_handler - Receive Descriptor next to check
+ * handler function
+ *
+ *   Retrieves the next_to_check value
+ ************************************************************************/
+static int 
+ixgbe_sysctl_next_to_check_handler(SYSCTLFN_ARGS)
+{
+	struct sysctlnode node = *rnode;
+	struct rx_ring *rxr = (struct rx_ring *)node.sysctl_data;
+	uint32_t val;
+
+	if (!rxr)
+		return (0);
+
+	val = rxr->next_to_check;
+	node.sysctl_data = &val;
+	return sysctl_lookup(SYSCTLFN_CALL(&node));
+} /* ixgbe_sysctl_next_to_check_handler */
 
 /************************************************************************
  * ixgbe_sysctl_rdh_handler - Receive Descriptor Head handler function
@@ -2304,7 +2359,6 @@ ixgbe_get_slot_info(struct adapter *adapter)
 	device_t		dev = adapter->dev;
 	struct ixgbe_hw		*hw = &adapter->hw;
 	u32                   offset;
-//	struct ixgbe_mac_info	*mac = &hw->mac;
 	u16			link;
 	int                   bus_info_valid = TRUE;
 
@@ -2483,7 +2537,7 @@ static inline void
 ixgbe_sched_handle_que(struct adapter *adapter, struct ix_queue *que)
 {
 
-	if (adapter->txrx_use_workqueue) {
+	if(que->txrx_use_workqueue) {
 		/*
 		 * adapter->que_wq is bound to each CPU instead of
 		 * each NIC queue to reduce workqueue kthread. As we
@@ -2527,6 +2581,12 @@ ixgbe_msix_que(void *arg)
 	ixgbe_disable_queue(adapter, que->msix);
 	++que->irqs.ev_count;
 
+	/*
+	 * Don't change "que->txrx_use_workqueue" from this point to avoid
+	 * flip-flopping softint/workqueue mode in one deferred processing.
+	 */
+	que->txrx_use_workqueue = adapter->txrx_use_workqueue;
+
 #ifdef __NetBSD__
 	/* Don't run ixgbe_rxeof in interrupt context */
 	more = true;
@@ -2549,7 +2609,7 @@ ixgbe_msix_que(void *arg)
 	 *    the last interval.
 	 */
 	if (que->eitr_setting)
-		ixgbe_eitr_write(que, que->eitr_setting);
+		ixgbe_eitr_write(adapter, que->msix, que->eitr_setting);
 
 	que->eitr_setting = 0;
 
@@ -2781,7 +2841,7 @@ ixgbe_media_change(struct ifnet *ifp)
 		return (EINVAL);
 
 	if (hw->phy.media_type == ixgbe_media_type_backplane)
-		return (ENODEV);
+		return (EPERM);
 
 	/*
 	 * We don't actually need to check against the supported
@@ -3032,17 +3092,15 @@ ixgbe_msix_link(void *arg)
 } /* ixgbe_msix_link */
 
 static void
-ixgbe_eitr_write(struct ix_queue *que, uint32_t itr)
+ixgbe_eitr_write(struct adapter *adapter, uint32_t index, uint32_t itr)
 {
-	struct adapter *adapter = que->adapter;
 	
         if (adapter->hw.mac.type == ixgbe_mac_82598EB)
                 itr |= itr << 16;
         else
                 itr |= IXGBE_EITR_CNT_WDIS;
 
-	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EITR(que->msix),
-	    itr);
+	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EITR(index), itr);
 }
 
 
@@ -3090,7 +3148,7 @@ ixgbe_sysctl_interrupt_rate_handler(SYSCTLFN_ARGS)
 		ixgbe_max_interrupt_rate = rate;
 	} else
 		ixgbe_max_interrupt_rate = 0;
-	ixgbe_eitr_write(que, reg);
+	ixgbe_eitr_write(adapter, que->msix, reg);
 
 	return (0);
 } /* ixgbe_sysctl_interrupt_rate_handler */
@@ -3140,6 +3198,12 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 	}
 
 	if (sysctl_createv(log, 0, &rnode, &cnode,
+	    CTLFLAG_READWRITE, CTLTYPE_INT,
+	    "debug", SYSCTL_DESCR("Debug Info"),
+	    ixgbe_sysctl_debug, 0, (void *)adapter, 0, CTL_CREATE, CTL_EOL) != 0)
+		aprint_error_dev(dev, "could not create sysctl\n");
+
+	if (sysctl_createv(log, 0, &rnode, &cnode,
 	    CTLFLAG_READONLY, CTLTYPE_INT,
 	    "num_rx_desc", SYSCTL_DESCR("Number of rx descriptors"),
 	    NULL, 0, &adapter->num_rx_desc, 0, CTL_CREATE, CTL_EOL) != 0)
@@ -3171,6 +3235,16 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 	    CTL_EOL) != 0)
 		aprint_error_dev(dev, "could not create sysctl\n");
 
+	/*
+	 * If each "que->txrx_use_workqueue" is changed in sysctl handler,
+	 * it causesflip-flopping softint/workqueue mode in one deferred
+	 * processing. Therefore, preempt_disable()/preempt_enable() are
+	 * required in ixgbe_sched_handle_que() to avoid
+	 * KASSERT(ixgbe_sched_handle_que()) in softint_schedule().
+	 * I think changing "que->txrx_use_workqueue" in interrupt handler
+	 * is lighter than doing preempt_disable()/preempt_enable() in every
+	 * ixgbe_sched_handle_que().
+	 */
 	adapter->txrx_use_workqueue = ixgbe_txrx_workqueue;
 	if (sysctl_createv(log, 0, &rnode, &cnode, CTLFLAG_READWRITE,
 	    CTLTYPE_BOOL, "txrx_workqueue", SYSCTL_DESCR("Use workqueue for packet processing"),
@@ -3242,6 +3316,15 @@ ixgbe_add_device_sysctls(struct adapter *adapter)
 		    CTL_CREATE, CTL_EOL) != 0)
 			aprint_error_dev(dev, "could not create sysctl\n");
 	}
+
+	if ((hw->mac.type == ixgbe_mac_X550EM_a)
+	    && (hw->phy.type == ixgbe_phy_fw))
+		if (sysctl_createv(log, 0, &rnode, &cnode, CTLFLAG_READWRITE,
+		    CTLTYPE_BOOL, "force_10_100_autonego",
+		    SYSCTL_DESCR("Force autonego on 10M and 100M"),
+		    NULL, 0, &hw->phy.force_10_100_autonego, 0,
+		    CTL_CREATE, CTL_EOL) != 0)
+			aprint_error_dev(dev, "could not create sysctl\n");
 
 	if (adapter->feat_cap & IXGBE_FEATURE_EEE) {
 		if (sysctl_createv(log, 0, &rnode, &cnode, CTLFLAG_READWRITE,
@@ -3454,14 +3537,16 @@ ixgbe_detach(device_t dev, int flags)
 			evcnt_detach(&stats->pxonrxc[i]);
 			evcnt_detach(&stats->pxofftxc[i]);
 			evcnt_detach(&stats->pxoffrxc[i]);
-			evcnt_detach(&stats->pxon2offc[i]);
+			if (hw->mac.type >= ixgbe_mac_82599EB)
+				evcnt_detach(&stats->pxon2offc[i]);
 		}
 		if (i < __arraycount(stats->qprc)) {
 			evcnt_detach(&stats->qprc[i]);
 			evcnt_detach(&stats->qptc[i]);
 			evcnt_detach(&stats->qbrc[i]);
 			evcnt_detach(&stats->qbtc[i]);
-			evcnt_detach(&stats->qprdc[i]);
+			if (hw->mac.type >= ixgbe_mac_82599EB)
+				evcnt_detach(&stats->qprdc[i]);
 		}
 
 		evcnt_detach(&rxr->rx_packets);
@@ -3709,12 +3794,13 @@ ixgbe_init_locked(struct adapter *adapter)
 	struct ifnet   *ifp = adapter->ifp;
 	device_t 	dev = adapter->dev;
 	struct ixgbe_hw *hw = &adapter->hw;
+	struct ix_queue *que;
 	struct tx_ring  *txr;
 	struct rx_ring  *rxr;
 	u32		txdctl, mhadd;
 	u32		rxdctl, rxctrl;
 	u32             ctrl_ext;
-	int             err = 0;
+	int             i, j, err;
 
 	/* XXX check IFF_UP and IFF_RUNNING, power-saving state! */
 
@@ -3724,6 +3810,8 @@ ixgbe_init_locked(struct adapter *adapter)
 	hw->adapter_stopped = FALSE;
 	ixgbe_stop_adapter(hw);
         callout_stop(&adapter->timer);
+	for (i = 0, que = adapter->queues; i < adapter->num_queues; i++, que++)
+		que->disabled_count = 0;
 
 	/* XXX I moved this here from the SIOCSIFMTU case in ixgbe_ioctl(). */
 	adapter->max_frame_size =
@@ -3752,7 +3840,9 @@ ixgbe_init_locked(struct adapter *adapter)
 	}
 
 	ixgbe_init_hw(hw);
+
 	ixgbe_initialize_iov(adapter);
+
 	ixgbe_initialize_transmit_units(adapter);
 
 	/* Setup Multicast table */
@@ -3787,7 +3877,7 @@ ixgbe_init_locked(struct adapter *adapter)
 	}
 
 	/* Now enable all the queues */
-	for (int i = 0; i < adapter->num_queues; i++) {
+	for (i = 0; i < adapter->num_queues; i++) {
 		txr = &adapter->tx_rings[i];
 		txdctl = IXGBE_READ_REG(hw, IXGBE_TXDCTL(txr->me));
 		txdctl |= IXGBE_TXDCTL_ENABLE;
@@ -3804,7 +3894,7 @@ ixgbe_init_locked(struct adapter *adapter)
 		IXGBE_WRITE_REG(hw, IXGBE_TXDCTL(txr->me), txdctl);
 	}
 
-	for (int i = 0, j = 0; i < adapter->num_queues; i++) {
+	for (i = 0; i < adapter->num_queues; i++) {
 		rxr = &adapter->rx_rings[i];
 		rxdctl = IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me));
 		if (hw->mac.type == ixgbe_mac_82598EB) {
@@ -3818,7 +3908,7 @@ ixgbe_init_locked(struct adapter *adapter)
 		}
 		rxdctl |= IXGBE_RXDCTL_ENABLE;
 		IXGBE_WRITE_REG(hw, IXGBE_RXDCTL(rxr->me), rxdctl);
-		for (; j < 10; j++) {
+		for (j = 0; j < 10; j++) {
 			if (IXGBE_READ_REG(hw, IXGBE_RXDCTL(rxr->me)) &
 			    IXGBE_RXDCTL_ENABLE)
 				break;
@@ -3866,7 +3956,7 @@ ixgbe_init_locked(struct adapter *adapter)
 
 	callout_reset(&adapter->timer, hz, ixgbe_local_timer, adapter);
 
-	/* Set up MSI-X routing */
+	/* Set up MSI/MSI-X routing */
 	if (adapter->feat_en & IXGBE_FEATURE_MSIX) {
 		ixgbe_configure_ivars(adapter);
 		/* Set up auto-mask */
@@ -3898,7 +3988,10 @@ ixgbe_init_locked(struct adapter *adapter)
 	}
 
 	/* Set moderation on the Link interrupt */
-	IXGBE_WRITE_REG(hw, IXGBE_EITR(adapter->vector), IXGBE_LINK_ITR);
+	ixgbe_eitr_write(adapter, adapter->vector, IXGBE_LINK_ITR);
+
+	/* Enable power to the phy. */
+	ixgbe_set_phy_power(hw, TRUE);
 
 	/* Config/Enable Link */
 	ixgbe_config_link(adapter);
@@ -4030,7 +4123,7 @@ ixgbe_configure_ivars(struct adapter *adapter)
 		/* ... and the TX */
 		ixgbe_set_ivar(adapter, txr->me, que->msix, 1);
 		/* Set an Initial EITR value */
-		ixgbe_eitr_write(que, newitr);
+		ixgbe_eitr_write(adapter, que->msix, newitr);
 		/*
 		 * To eliminate influence of the previous state.
 		 * At this point, Tx/Rx interrupt handler
@@ -4311,6 +4404,7 @@ ixgbe_local_timer1(void *arg)
 	/* Only truely watchdog if all queues show hung */
 	if (hung == adapter->num_queues)
 		goto watchdog;
+#if 0 /* XXX Avoid unexpectedly disabling interrupt forever (PR#53294) */
 	else if (queues != 0) { /* Force an IRQ on queues with work */
 		que = adapter->queues;
 		for (i = 0; i < adapter->num_queues; i++, que++) {
@@ -4321,6 +4415,7 @@ ixgbe_local_timer1(void *arg)
 			mutex_exit(&que->dc_mtx);
 		}
 	}
+#endif
 
 out:
 	callout_reset(&adapter->timer, hz, ixgbe_local_timer, adapter);
@@ -4405,7 +4500,11 @@ ixgbe_handle_mod(void *context)
 		return;
 	}
 
-	err = hw->mac.ops.setup_sfp(hw);
+	if (hw->mac.type == ixgbe_mac_82598EB)
+		err = hw->phy.ops.reset(hw);
+	else
+		err = hw->mac.ops.setup_sfp(hw);
+
 	if (err == IXGBE_ERR_SFP_NOT_SUPPORTED) {
 		device_printf(dev,
 		    "Setup failure - unsupported SFP+ module type.\n");
@@ -4589,6 +4688,7 @@ ixgbe_update_link_status(struct adapter *adapter)
 			/* Update DMA coalescing config */
 			ixgbe_config_dmac(adapter);
 			if_link_state_change(ifp, LINK_STATE_UP);
+
 			if (adapter->feat_en & IXGBE_FEATURE_SRIOV)
 				ixgbe_ping_all_vfs(adapter);
 		}
@@ -4600,6 +4700,7 @@ ixgbe_update_link_status(struct adapter *adapter)
 			adapter->link_active = FALSE;
 			if (adapter->feat_en & IXGBE_FEATURE_SRIOV)
 				ixgbe_ping_all_vfs(adapter);
+			ixgbe_drain_all(adapter);
 		}
 	}
 } /* ixgbe_update_link_status */
@@ -4712,7 +4813,6 @@ ixgbe_enable_intr(struct adapter *adapter)
 
 	IXGBE_WRITE_FLUSH(hw);
 
-	return;
 } /* ixgbe_enable_intr */
 
 /************************************************************************
@@ -4785,6 +4885,11 @@ ixgbe_legacy_irq(void *arg)
 	}
 
 	if ((ifp->if_flags & IFF_RUNNING) != 0) {
+		/*
+		 * The same as ixgbe_msix_que() about "que->txrx_use_workqueue".
+		 */
+		que->txrx_use_workqueue = adapter->txrx_use_workqueue;
+
 #ifdef __NetBSD__
 		/* Don't run ixgbe_rxeof in interrupt context */
 		more = true;
@@ -4882,8 +4987,6 @@ ixgbe_free_pciintr_resources(struct adapter *adapter)
 		    adapter->osdep.nintrs);
 		adapter->osdep.intrs = NULL;
 	}
-
-	return;
 } /* ixgbe_free_pciintr_resources */
 
 /************************************************************************
@@ -4901,7 +5004,6 @@ ixgbe_free_pci_resources(struct adapter *adapter)
 		    adapter->osdep.mem_size);
 	}
 
-	return;
 } /* ixgbe_free_pci_resources */
 
 /************************************************************************
@@ -5596,6 +5698,115 @@ ixgbe_sysctl_eee_state(SYSCTLFN_ARGS)
 	return (error);
 } /* ixgbe_sysctl_eee_state */
 
+#define PRINTQS(adapter, regname)					\
+	do {								\
+		struct ixgbe_hw	*_hw = &(adapter)->hw;			\
+		int _i;							\
+									\
+		printf("%s: %s", device_xname((adapter)->dev), #regname); \
+		for (_i = 0; _i < (adapter)->num_queues; _i++) {	\
+			printf((_i == 0) ? "\t" : " ");			\
+			printf("%08x", IXGBE_READ_REG(_hw,		\
+				IXGBE_##regname(_i)));			\
+		}							\
+		printf("\n");						\
+	} while (0)
+
+/************************************************************************
+ * ixgbe_print_debug_info
+ *
+ *   Called only when em_display_debug_stats is enabled.
+ *   Provides a way to take a look at important statistics
+ *   maintained by the driver and hardware.
+ ************************************************************************/
+static void
+ixgbe_print_debug_info(struct adapter *adapter)
+{
+        device_t        dev = adapter->dev;
+        struct ixgbe_hw *hw = &adapter->hw;
+	int table_size;
+	int i;
+
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
+	case ixgbe_mac_X550EM_a:
+		table_size = 128;
+		break;
+	default:
+		table_size = 32;
+		break;
+	}
+	
+	device_printf(dev, "[E]RETA:\n");
+	for (i = 0; i < table_size; i++) {
+		if (i < 32)
+			printf("%02x: %08x\n", i, IXGBE_READ_REG(hw,
+				IXGBE_RETA(i)));
+		else
+			printf("%02x: %08x\n", i, IXGBE_READ_REG(hw,
+				IXGBE_ERETA(i - 32)));
+	}
+
+	device_printf(dev, "queue:");
+	for (i = 0; i < adapter->num_queues; i++) {
+		printf((i == 0) ? "\t" : " ");
+		printf("%8d", i);
+	}
+	printf("\n");
+	PRINTQS(adapter, RDBAL);
+	PRINTQS(adapter, RDBAH);
+	PRINTQS(adapter, RDLEN);
+	PRINTQS(adapter, SRRCTL);
+	PRINTQS(adapter, RDH);
+	PRINTQS(adapter, RDT);
+	PRINTQS(adapter, RXDCTL);
+
+	device_printf(dev, "RQSMR:");
+	for (i = 0; i < adapter->num_queues / 4; i++) {
+		printf((i == 0) ? "\t" : " ");
+		printf("%08x", IXGBE_READ_REG(hw, IXGBE_RQSMR(i)));
+	}
+	printf("\n");
+
+	device_printf(dev, "disabled_count:");
+	for (i = 0; i < adapter->num_queues; i++) {
+		printf((i == 0) ? "\t" : " ");
+		printf("%8d", adapter->queues[i].disabled_count);
+	}
+	printf("\n");
+	
+	device_printf(dev, "EIMS:\t%08x\n", IXGBE_READ_REG(hw, IXGBE_EIMS));
+	if (hw->mac.type != ixgbe_mac_82598EB) {
+		device_printf(dev, "EIMS_EX(0):\t%08x\n",
+			      IXGBE_READ_REG(hw, IXGBE_EIMS_EX(0)));
+		device_printf(dev, "EIMS_EX(1):\t%08x\n",
+			      IXGBE_READ_REG(hw, IXGBE_EIMS_EX(1)));
+	}
+} /* ixgbe_print_debug_info */
+
+/************************************************************************
+ * ixgbe_sysctl_debug
+ ************************************************************************/
+static int
+ixgbe_sysctl_debug(SYSCTLFN_ARGS)
+{
+	struct sysctlnode node = *rnode;
+	struct adapter *adapter = (struct adapter *)node.sysctl_data;
+	int            error, result = 0;
+
+	node.sysctl_data = &result;
+	error = sysctl_lookup(SYSCTLFN_CALL(&node));
+
+	if (error || newp == NULL)
+		return error;
+
+	if (result == 1)
+		ixgbe_print_debug_info(adapter);
+
+	return 0;
+} /* ixgbe_sysctl_debug */
+
 /************************************************************************
  * ixgbe_init_device_features
  ************************************************************************/
@@ -5718,10 +5929,10 @@ ixgbe_probe(device_t dev, cfdata_t cf, void *aux)
 	return (ixgbe_lookup(pa) != NULL) ? 1 : 0;
 }
 
-static ixgbe_vendor_info_t *
+static const ixgbe_vendor_info_t *
 ixgbe_lookup(const struct pci_attach_args *pa)
 {
-	ixgbe_vendor_info_t *ent;
+	const ixgbe_vendor_info_t *ent;
 	pcireg_t subid;
 
 	INIT_DEBUGOUT("ixgbe_lookup: begin");
@@ -5738,7 +5949,6 @@ ixgbe_lookup(const struct pci_attach_args *pa)
 			(ent->subvendor_id == 0)) &&
 		    ((PCI_SUBSYS_ID(subid) == ent->subdevice_id) ||
 			(ent->subdevice_id == 0))) {
-			++ixgbe_total_ports;
 			return ent;
 		}
 	}
@@ -5750,10 +5960,11 @@ ixgbe_ifflags_cb(struct ethercom *ec)
 {
 	struct ifnet *ifp = &ec->ec_if;
 	struct adapter *adapter = ifp->if_softc;
-	int change = ifp->if_flags ^ adapter->if_flags, rc = 0;
+	int change, rc = 0;
 
 	IXGBE_CORE_LOCK(adapter);
 
+	change = ifp->if_flags ^ adapter->if_flags;
 	if (change != 0)
 		adapter->if_flags = ifp->if_flags;
 
@@ -6250,7 +6461,6 @@ ixgbe_allocate_msix(struct adapter *adapter, const struct pci_attach_args *pa)
 	    adapter->osdep.intrs[vector], IPL_NET, ixgbe_msix_link, adapter,
 	    intr_xname);
 	if (adapter->osdep.ihs[vector] == NULL) {
-		adapter->res = NULL;
 		aprint_error_dev(dev, "Failed to register LINK handler\n");
 		error = ENXIO;
 		goto err_out;
@@ -6424,10 +6634,11 @@ ixgbe_handle_link(void *context)
 	IXGBE_CORE_UNLOCK(adapter);
 } /* ixgbe_handle_link */
 
+#if 0
 /************************************************************************
  * ixgbe_rearm_queues
  ************************************************************************/
-static void
+static __inline void
 ixgbe_rearm_queues(struct adapter *adapter, u64 queues)
 {
 	u32 mask;
@@ -6451,3 +6662,4 @@ ixgbe_rearm_queues(struct adapter *adapter, u64 queues)
 		break;
 	}
 } /* ixgbe_rearm_queues */
+#endif

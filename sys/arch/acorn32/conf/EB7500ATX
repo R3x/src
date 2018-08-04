@@ -1,4 +1,4 @@
-#	$NetBSD: EB7500ATX,v 1.64 2018/01/23 14:47:53 sevan Exp $
+#	$NetBSD: EB7500ATX,v 1.66 2018/06/07 13:36:28 thorpej Exp $
 #
 #	EB7500ATX --- NetBSD/acorn32 complete configuration
 #
@@ -22,7 +22,7 @@ include 	"arch/acorn32/conf/std.acorn32"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident		"EB7500ATX-$Revision: 1.64 $"
+#ident		"EB7500ATX-$Revision: 1.66 $"
 
 # estimated number of users
 maxusers	32

@@ -1,4 +1,4 @@
-/*	$NetBSD: xhci_pci.c,v 1.11 2017/12/28 05:43:42 msaitoh Exp $	*/
+/*	$NetBSD: xhci_pci.c,v 1.13 2018/06/29 17:48:24 msaitoh Exp $	*/
 /*	OpenBSD: xhci_pci.c,v 1.4 2014/07/12 17:38:51 yuo Exp	*/
 
 /*
@@ -32,7 +32,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: xhci_pci.c,v 1.11 2017/12/28 05:43:42 msaitoh Exp $");
+__KERNEL_RCSID(0, "$NetBSD: xhci_pci.c,v 1.13 2018/06/29 17:48:24 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_xhci_pci.h"
@@ -125,7 +125,7 @@ xhci_pci_attach(device_t parent, device_t self, void *aux)
 	const pcitag_t tag = pa->pa_tag;
 	pci_intr_type_t intr_type;
 	char const *intrstr;
-	pcireg_t csr, memtype;
+	pcireg_t csr, memtype, usbrev;
 	int err;
 	uint32_t hccparams;
 	char intrbuf[PCI_INTRSTR_LEN];
@@ -217,10 +217,27 @@ alloc_retry:
 	}
 	aprint_normal_dev(self, "interrupting at %s\n", intrstr);
 
-	/* Figure out vendor for root hub descriptor. */
-	sc->sc_id_vendor = PCI_VENDOR(pa->pa_id);
-	pci_findvendor(sc->sc_vendor, sizeof(sc->sc_vendor),
-	    sc->sc_id_vendor);
+	usbrev = pci_conf_read(pc, tag, PCI_USBREV) & PCI_USBREV_MASK;
+	switch (usbrev) {
+	case PCI_USBREV_3_0:
+		sc->sc_bus.ub_revision = USBREV_3_0;
+		break;
+	case PCI_USBREV_3_1:
+		sc->sc_bus.ub_revision = USBREV_3_1;
+		break;
+	default:
+		if (usbrev < PCI_USBREV_3_0) {
+			aprint_error_dev(self, "Unknown revision (%02x)\n",
+			    usbrev);
+			sc->sc_bus.ub_revision = USBREV_UNKNOWN;
+		} else {
+			/* Default to the latest revision */
+			aprint_normal_dev(self,
+			    "Unknown revision (%02x). Set to 3.1.\n", usbrev);
+			sc->sc_bus.ub_revision = USBREV_3_1;
+		}
+		break;
+	}
 
 	/* Intel chipset requires SuperSpeed enable and USB2 port routing */
 	switch (PCI_VENDOR(pa->pa_id)) {

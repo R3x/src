@@ -1,4 +1,4 @@
-/*	$NetBSD: locore.S,v 1.163 2018/03/30 09:53:08 maxv Exp $	*/
+/*	$NetBSD: locore.S,v 1.169 2018/07/09 18:52:04 maxv Exp $	*/
 
 /*
  * Copyright-o-rama!
@@ -1088,26 +1088,6 @@ ENTRY(cpu_switchto)
 	movq	%rbp,PCB_RBP(%rax)
 .Lskip_save:
 
-#ifdef SVS
-	pushq	%rdx
-	movb	_C_LABEL(svs_enabled),%dl
-	testb	%dl,%dl
-	jz	.Lskip_svs
-	callq	_C_LABEL(svs_lwp_switch)
-.Lskip_svs:
-	popq	%rdx
-
-	/* Restore rdi/rsi for speculation_barrier */
-	movq	%r13,%rdi
-	movq	%r12,%rsi
-#endif
-
-#ifndef XEN
-	pushq	%rdx
-	callq	_C_LABEL(speculation_barrier)
-	popq	%rdx
-#endif
-
 	/* Switch to newlwp's stack. */
 	movq	L_PCB(%r12),%r14
 	movq	PCB_RSP(%r14),%rsp
@@ -1123,6 +1103,20 @@ ENTRY(cpu_switchto)
 	/* Skip the rest if returning to a pinned LWP. */
 	testb	%dl,%dl		/* returning = true ? */
 	jnz	.Lswitch_return
+
+#ifdef SVS
+	movb	_C_LABEL(svs_enabled),%dl
+	testb	%dl,%dl
+	jz	.Lskip_svs
+	callq	_C_LABEL(svs_lwp_switch)
+.Lskip_svs:
+#endif
+
+#ifndef XEN
+	movq	%r13,%rdi
+	movq	%r12,%rsi
+	callq	_C_LABEL(speculation_barrier)
+#endif
 
 	/* Switch ring0 stack */
 #ifdef SVS
@@ -1147,6 +1141,16 @@ ENTRY(cpu_switchto)
 	callq	_C_LABEL(x86_64_switch_context)
 #endif
 .Lring0_switched:
+
+#ifndef XEN
+	movb	_C_LABEL(x86_fpu_eager),%dl
+	testb	%dl,%dl
+	jz	.Lno_eagerfpu
+	movq	%r13,%rdi
+	movq	%r12,%rsi
+	callq	_C_LABEL(fpu_eagerswitch)
+.Lno_eagerfpu:
+#endif
 
 	/* Don't bother with the rest if switching to a system process. */
 	testl	$LW_SYSTEM,L_FLAG(%r12)
@@ -1388,8 +1392,8 @@ IDTVEC(\name)
 
 	/* Get the LWP's kernel stack pointer in %rax */
 	.if	\is_svs
-		movq	%rax,SVS_UTLS+UTLS_SCRATCH
-		movq	SVS_UTLS+UTLS_RSP0,%rax
+		movabs	%rax,SVS_UTLS+UTLS_SCRATCH
+		movabs	SVS_UTLS+UTLS_RSP0,%rax
 	.else
 		movq	%rax,CPUVAR(SCRATCH)
 		movq	CPUVAR(CURLWP),%rax
@@ -1407,7 +1411,7 @@ IDTVEC(\name)
 
 	/* Restore %rax */
 	.if	\is_svs
-		movq	SVS_UTLS+UTLS_SCRATCH,%rax
+		movabs	SVS_UTLS+UTLS_SCRATCH,%rax
 	.else
 		movq	CPUVAR(SCRATCH),%rax
 	.endif
@@ -1616,7 +1620,7 @@ END(intrfastexit)
 	.globl	nosvs_leave_altstack, nosvs_leave_altstack_end
 
 LABEL(svs_enter)
-	movq	SVS_UTLS+UTLS_KPDIRPA,%rax
+	movabs	SVS_UTLS+UTLS_KPDIRPA,%rax
 	movq	%rax,%cr3
 	movq	CPUVAR(KRSP0),%rsp
 LABEL(svs_enter_end)
@@ -1624,7 +1628,7 @@ LABEL(svs_enter_end)
 LABEL(svs_enter_altstack)
 	testb	$SEL_UPL,TF_CS(%rsp)
 	jz	1234f
-	movq	SVS_UTLS+UTLS_KPDIRPA,%rax
+	movabs	SVS_UTLS+UTLS_KPDIRPA,%rax
 	movq	%rax,%cr3
 1234:
 LABEL(svs_enter_altstack_end)

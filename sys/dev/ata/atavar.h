@@ -1,4 +1,4 @@
-/*	$NetBSD: atavar.h,v 1.95 2017/10/17 18:52:50 jdolecek Exp $	*/
+/*	$NetBSD: atavar.h,v 1.97 2018/06/01 18:13:30 macallan Exp $	*/
 
 /*
  * Copyright (c) 1998, 2001 Manuel Bouyer.
@@ -407,6 +407,7 @@ struct ata_channel {
 #define ATACH_TH_RESET 0x200	/* someone ask the thread to reset */
 #define ATACH_TH_RESCAN 0x400	/* rescan requested */
 #define ATACH_NCQ	0x800	/* channel executing NCQ commands */
+#define ATACH_DMA_BEFORE_CMD	0x1000	/* start DMA first */
 
 	/* for the reset callback */
 	int ch_reset_flags;
@@ -522,7 +523,7 @@ int	ata_read_log_ext_ncq(struct ata_drive_datas *, uint8_t, uint8_t *,
 #define CMD_AGAIN 2
 
 struct ata_xfer *ata_get_xfer_ext(struct ata_channel *, int, uint8_t);
-#define ata_get_xfer(chp) ata_get_xfer_ext((chp), C_WAIT, 0);
+#define ata_get_xfer(chp) ata_get_xfer_ext((chp), C_WAIT, 0)
 void	ata_free_xfer(struct ata_channel *, struct ata_xfer *);
 void	ata_deactivate_xfer(struct ata_channel *, struct ata_xfer *);
 void	ata_exec_xfer(struct ata_channel *, struct ata_xfer *);

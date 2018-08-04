@@ -1,4 +1,4 @@
-/* $NetBSD: simplefb.c,v 1.3 2017/12/18 19:06:32 jmcneill Exp $ */
+/* $NetBSD: simplefb.c,v 1.5 2018/05/06 10:31:10 jmcneill Exp $ */
 
 /*-
  * Copyright (c) 2017 Jared McNeill <jmcneill@invisible.ca>
@@ -29,7 +29,7 @@
 #include "opt_wsdisplay_compat.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: simplefb.c,v 1.3 2017/12/18 19:06:32 jmcneill Exp $");
+__KERNEL_RCSID(0, "$NetBSD: simplefb.c,v 1.5 2018/05/06 10:31:10 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -70,6 +70,7 @@ simplefb_ioctl(void *v, void *vs, u_long cmd, void *data, int flag, lwp_t *l)
 	struct wsdisplayio_bus_id *busid;
 	struct wsdisplayio_fbinfo *fbi;
 	struct rasops_info *ri;
+	u_int video;
 	int error;
 
 	switch (cmd) {
@@ -87,6 +88,15 @@ simplefb_ioctl(void *v, void *vs, u_long cmd, void *data, int flag, lwp_t *l)
 		if (error == 0)
 			fbi->fbi_flags |= WSFB_VRAM_IS_RAM;
 		return error;
+	case WSDISPLAYIO_SVIDEO:
+		video = *(u_int *)data;
+		if (video == WSDISPLAYIO_VIDEO_OFF)
+			pmf_event_inject(NULL, PMFE_DISPLAY_OFF);
+		else if (video == WSDISPLAYIO_VIDEO_ON)
+			pmf_event_inject(NULL, PMFE_DISPLAY_ON);
+		else
+			return EINVAL;
+		return 0;
 	default:
 		return EPASSTHROUGH;
 	}
@@ -146,7 +156,8 @@ simplefb_attach_genfb(struct simplefb_softc *sc)
 		return ENXIO;
 	}
 
-	if (bus_space_map(sc->sc_bst, addr, size, BUS_SPACE_MAP_LINEAR,
+	if (bus_space_map(sc->sc_bst, addr, size,
+	    BUS_SPACE_MAP_LINEAR | BUS_SPACE_MAP_PREFETCHABLE,
 	    &sc->sc_bsh) != 0) {
 		aprint_error(": failed to map fb\n");
 		return ENXIO;
@@ -159,7 +170,7 @@ simplefb_attach_genfb(struct simplefb_softc *sc)
 	prop_dictionary_set_uint8(dict, "depth", depth);
 	prop_dictionary_set_uint16(dict, "linebytes", stride);
 	prop_dictionary_set_uint32(dict, "address", addr);
-	prop_dictionary_set_uint32(dict, "virtual_address",
+	prop_dictionary_set_uint64(dict, "virtual_address",
 	    (uintptr_t)bus_space_vaddr(sc->sc_bst, sc->sc_bsh));
 
 	genfb_init(&sc->sc_gen);

@@ -1,4 +1,4 @@
-/*	$NetBSD: ip_mroute.c,v 1.155 2018/03/21 14:23:54 roy Exp $	*/
+/*	$NetBSD: ip_mroute.c,v 1.160 2018/06/21 10:37:50 knakahara Exp $	*/
 
 /*
  * Copyright (c) 1992, 1993
@@ -93,7 +93,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip_mroute.c,v 1.155 2018/03/21 14:23:54 roy Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip_mroute.c,v 1.160 2018/06/21 10:37:50 knakahara Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -1279,6 +1279,12 @@ ip_mforward(struct mbuf *m, struct ifnet *ifp)
 		log(LOG_DEBUG, "ip_mforward: src %x, dst %x, ifp %p\n",
 		    ntohl(ip->ip_src.s_addr), ntohl(ip->ip_dst.s_addr), ifp);
 
+	/*
+	 * XXX XXX: Why do we check [1] against IPOPT_LSRR? Because we
+	 * expect [0] to be IPOPT_NOP, maybe? In all cases that doesn't
+	 * make a lot of sense, a forged packet can just put two IPOPT_NOPs
+	 * followed by one IPOPT_LSRR, and bypass the check.
+	 */
 	if (ip->ip_hl < (IP_HDR_LEN + TUNNEL_LEN) >> 2 ||
 	    ((u_char *)(ip + 1))[1] != IPOPT_LSRR) {
 		/*
@@ -1822,7 +1828,7 @@ vif_encapcheck(struct mbuf *m, int off, int proto, void *arg)
 	 */
 
 	/* Obtain the outer IP header and the vif pointer. */
-	m_copydata((struct mbuf *)m, 0, sizeof(ip), (void *)&ip);
+	m_copydata(m, 0, sizeof(ip), (void *)&ip);
 	vifp = (struct vif *)arg;
 
 	/*
@@ -1843,7 +1849,9 @@ vif_encapcheck(struct mbuf *m, int off, int proto, void *arg)
 		return 0;
 
 	/* Check that the inner destination is multicast. */
-	m_copydata((struct mbuf *)m, off, sizeof(ip), (void *)&ip);
+	if (off + sizeof(ip) > m->m_pkthdr.len)
+		return 0;
+	m_copydata(m, off, sizeof(ip), (void *)&ip);
 	if (!IN_MULTICAST(ip.ip_dst.s_addr))
 		return 0;
 
@@ -2065,6 +2073,11 @@ priority(struct vif *vifp, struct ip *ip)
 	int prio = 50;	/* the lowest priority -- default case */
 
 	/* temporary hack; may add general packet classifier some day */
+
+	/*
+	 * XXX XXX: We're reading the UDP header, but we didn't ensure
+	 * it was present in the packet.
+	 */
 
 	/*
 	 * The UDP port space is divided up into four priority ranges:
@@ -3059,6 +3072,13 @@ pim_input(struct mbuf *m, ...)
 			return;
 		}
 
+		/* verify the inner packet doesn't have options */
+		if (encap_ip->ip_hl != (sizeof(struct ip) >> 2)) {
+			pimstat.pims_rcv_badregisters++;
+			m_freem(m);
+			return;
+		}
+
 		/* verify the inner packet is destined to a mcast group */
 		if (!IN_MULTICAST(encap_ip->ip_dst.s_addr)) {
 			pimstat.pims_rcv_badregisters++;
@@ -3145,6 +3165,11 @@ pim_input_to_daemon:
 	 * XXX: the outer IP header pkt size of a Register is not adjust to
 	 * reflect the fact that the inner multicast data is truncated.
 	 */
+	/*
+	 * Currently, pim_input() is always called holding softnet_lock
+	 * by ipintr()(!NET_MPSAFE) or PR_INPUT_WRAP()(NET_MPSAFE).
+	 */
+	KASSERT(mutex_owned(softnet_lock));
 	rip_input(m, iphlen, proto);
 
 	return;

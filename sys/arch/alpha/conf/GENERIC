@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.379 2018/01/23 14:47:53 sevan Exp $
+# $NetBSD: GENERIC,v 1.383 2018/06/07 13:36:28 thorpej Exp $
 #
 # This machine description file is used to generate the default NetBSD
 # kernel.
@@ -19,7 +19,7 @@ include 	"arch/alpha/conf/std.alpha"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-ident		"GENERIC-$Revision: 1.379 $"
+ident		"GENERIC-$Revision: 1.383 $"
 
 maxusers 32
 

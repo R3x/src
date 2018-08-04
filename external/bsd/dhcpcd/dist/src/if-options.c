@@ -1086,14 +1086,8 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 		    strncmp(arg, "ms_classless_static_routes=",
 		        strlen("ms_classless_static_routes=")) == 0)
 		{
-			struct interface *ifp;
 			struct in_addr addr3;
 
-			ifp = if_find(ctx->ifaces, ifname);
-			if (ifp == NULL) {
-				logerrx("static routes require an interface");
-				return -1;
-			}
 			fp = np = strwhite(p);
 			if (np == NULL) {
 				logerrx("all routes need a gateway");
@@ -1107,7 +1101,7 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 				*fp = ' ';
 				return -1;
 			}
-			if ((rt = rt_new(ifp)) == NULL) {
+			if ((rt = rt_new0(ctx)) == NULL) {
 				*fp = ' ';
 				return -1;
 			}
@@ -1117,16 +1111,9 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 			TAILQ_INSERT_TAIL(&ifo->routes, rt, rt_next);
 			*fp = ' ';
 		} else if (strncmp(arg, "routers=", strlen("routers=")) == 0) {
-			struct interface *ifp;
-
-			ifp = if_find(ctx->ifaces, ifname);
-			if (ifp == NULL) {
-				logerrx("static routes require an interface");
-				return -1;
-			}
 			if (parse_addr(&addr, NULL, p) == -1)
 				return -1;
-			if ((rt = rt_new(ifp)) == NULL)
+			if ((rt = rt_new0(ctx)) == NULL)
 				return -1;
 			addr2.s_addr = INADDR_ANY;
 			sa_in_init(&rt->rt_dest, &addr2);
@@ -1373,6 +1360,7 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 		for (sl = 0; sl < ifo->ia_len; sl++) {
 			if ((arg == NULL && !ifo->ia[sl].iaid_set) ||
 			    (arg != NULL && ifo->ia[sl].iaid_set &&
+			    ifo->ia[sl].ia_type == (uint16_t)i &&
 			    ifo->ia[sl].iaid[0] == iaid[0] &&
 			    ifo->ia[sl].iaid[1] == iaid[1] &&
 			    ifo->ia[sl].iaid[2] == iaid[2] &&
@@ -1381,10 +1369,6 @@ parse_option(struct dhcpcd_ctx *ctx, const char *ifname, struct if_options *ifo,
 			        ia = &ifo->ia[sl];
 				break;
 			}
-		}
-		if (ia && ia->ia_type != (uint16_t)i) {
-			logerrx("Cannot mix IA for the same IAID");
-			break;
 		}
 		if (ia == NULL) {
 			ia = reallocarray(ifo->ia,
@@ -1863,6 +1847,7 @@ err_sla:
 			logerrx("invalid code: %s", arg);
 			return -1;
 		}
+		fp = strskipwhite(fp);
 		if (fp) {
 			s = parse_string(NULL, 0, fp);
 			if (s == -1) {
@@ -1925,12 +1910,32 @@ err_sla:
 		}
 		if (fp)
 			*fp++ = '\0';
-		if (strcasecmp(arg, "hmacmd5") == 0 ||
-		    strcasecmp(arg, "hmac-md5") == 0)
-			ifo->auth.algorithm = AUTH_ALG_HMAC_MD5;
-		else {
-			logerrx("%s: unsupported algorithm", arg);
-			return 1;
+		if (ifo->auth.protocol == AUTH_PROTO_TOKEN) {
+			np = strchr(arg, '/');
+			if (np) {
+				if (fp == NULL || np < fp)
+					*np++ = '\0';
+				else
+					np = NULL;
+			}
+			if (parse_uint32(&ifo->auth.token_snd_secretid,
+			    arg) == -1)
+				logerrx("%s: not a number", arg);
+			else
+				ifo->auth.token_rcv_secretid =
+				    ifo->auth.token_snd_secretid;
+			if (np &&
+			    parse_uint32(&ifo->auth.token_rcv_secretid,
+			    np) == -1)
+				logerrx("%s: not a number", arg);
+		} else {
+			if (strcasecmp(arg, "hmacmd5") == 0 ||
+			    strcasecmp(arg, "hmac-md5") == 0)
+				ifo->auth.algorithm = AUTH_ALG_HMAC_MD5;
+			else {
+				logerrx("%s: unsupported algorithm", arg);
+				return 1;
+			}
 		}
 		arg = fp;
 		if (arg == NULL) {
@@ -2367,7 +2372,7 @@ read_config(struct dhcpcd_ctx *ctx,
 		buf = malloc(buflen);
 		if (buf == NULL) {
 			logerr(__func__);
-			free_options(ifo);
+			free_options(ctx, ifo);
 			return NULL;
 		}
 		ldop = edop = NULL;
@@ -2381,7 +2386,7 @@ read_config(struct dhcpcd_ctx *ctx,
 				if (nbuf == NULL) {
 					logerr(__func__);
 					free(buf);
-					free_options(ifo);
+					free_options(ctx, ifo);
 					return NULL;
 				}
 				buf = nbuf;
@@ -2545,7 +2550,7 @@ read_config(struct dhcpcd_ctx *ctx,
 	free(buf);
 
 	if (profile && !have_profile) {
-		free_options(ifo);
+		free_options(ctx, ifo);
 		errno = ENOENT;
 		return NULL;
 	}
@@ -2590,7 +2595,7 @@ add_options(struct dhcpcd_ctx *ctx, const char *ifname,
 }
 
 void
-free_options(struct if_options *ifo)
+free_options(struct dhcpcd_ctx *ctx, struct if_options *ifo)
 {
 	size_t i;
 	struct dhcp_opt *opt;
@@ -2612,7 +2617,7 @@ free_options(struct if_options *ifo)
 				free(ifo->config[i++]);
 			free(ifo->config);
 		}
-		rt_headclear(&ifo->routes, AF_UNSPEC);
+		rt_headclear0(ctx, &ifo->routes, AF_UNSPEC);
 		free(ifo->script);
 		free(ifo->arping);
 		free(ifo->blacklist);

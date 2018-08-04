@@ -1,5 +1,5 @@
 #
-#	$NetBSD: VTC100,v 1.15 2017/11/25 04:53:24 christos Exp $
+#	$NetBSD: VTC100,v 1.17 2018/06/07 13:36:28 thorpej Exp $
 #
 #	VTC100 -- NEXCOM VTC100 Kernel
 #

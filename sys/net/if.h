@@ -1,4 +1,4 @@
-/*	$NetBSD: if.h,v 1.258 2018/01/15 13:05:40 maxv Exp $	*/
+/*	$NetBSD: if.h,v 1.264 2018/07/03 03:37:03 ozaki-r Exp $	*/
 
 /*-
  * Copyright (c) 1999, 2000, 2001 The NetBSD Foundation, Inc.
@@ -405,6 +405,7 @@ typedef struct ifnet {
 #define	if_iqdrops	if_data.ifi_iqdrops
 #define	if_noproto	if_data.ifi_noproto
 #define	if_lastchange	if_data.ifi_lastchange
+#define	if_name(ifp)	((ifp)->if_xname)
 
 #define	IFF_UP		0x0001		/* interface is up */
 #define	IFF_BROADCAST	0x0002		/* broadcast address valid */
@@ -467,14 +468,14 @@ typedef struct ifnet {
  */
 
 #ifdef _KERNEL
-static inline bool
+static __inline bool
 if_is_mpsafe(struct ifnet *ifp)
 {
 
 	return ((ifp->if_extflags & IFEF_MPSAFE) != 0);
 }
 
-static inline int
+static __inline int
 if_output_lock(struct ifnet *cifp, struct ifnet *ifp, struct mbuf *m,
     const struct sockaddr *dst, const struct rtentry *rt)
 {
@@ -491,7 +492,7 @@ if_output_lock(struct ifnet *cifp, struct ifnet *ifp, struct mbuf *m,
 	}
 }
 
-static inline void
+static __inline void
 if_start_lock(struct ifnet *ifp)
 {
 
@@ -504,7 +505,7 @@ if_start_lock(struct ifnet *ifp)
 	}
 }
 
-static inline bool
+static __inline bool
 if_is_link_state_changeable(struct ifnet *ifp)
 {
 
@@ -534,6 +535,11 @@ if_is_link_state_changeable(struct ifnet *ifp)
 #define SOFTNET_LOCK_UNLESS_NET_MPSAFE()	do { } while (0)
 #define SOFTNET_UNLOCK_UNLESS_NET_MPSAFE()	do { } while (0)
 
+#define SOFTNET_LOCK_IF_NET_MPSAFE()					\
+	do { mutex_enter(softnet_lock); } while (0)
+#define SOFTNET_UNLOCK_IF_NET_MPSAFE()					\
+	do { mutex_exit(softnet_lock); } while (0)
+
 #else /* NET_MPSAFE */
 
 #define KERNEL_LOCK_UNLESS_NET_MPSAFE()					\
@@ -545,6 +551,9 @@ if_is_link_state_changeable(struct ifnet *ifp)
 	do { mutex_enter(softnet_lock); } while (0)
 #define SOFTNET_UNLOCK_UNLESS_NET_MPSAFE()				\
 	do { mutex_exit(softnet_lock); } while (0)
+
+#define SOFTNET_LOCK_IF_NET_MPSAFE()		do { } while (0)
+#define SOFTNET_UNLOCK_IF_NET_MPSAFE()		do { } while (0)
 
 #endif /* NET_MPSAFE */
 
@@ -833,7 +842,7 @@ struct	ifreq {
 #define	ifreq_getdstaddr	ifreq_getaddr
 #define	ifreq_getbroadaddr	ifreq_getaddr
 
-static inline const struct sockaddr *
+static __inline const struct sockaddr *
 /*ARGSUSED*/
 ifreq_getaddr(u_long cmd, const struct ifreq *ifr)
 {
@@ -1081,6 +1090,7 @@ void	if_link_state_change_softint(struct ifnet *, int);
 void	if_up(struct ifnet *);
 void	ifinit(void);
 void	ifinit1(void);
+void	ifinit_post(void);
 int	ifaddrpref_ioctl(struct socket *, u_long, void *, struct ifnet *);
 extern int (*ifioctl)(struct socket *, u_long, void *, struct lwp *);
 int	ifioctl_common(struct ifnet *, u_long, void *);
@@ -1104,7 +1114,7 @@ void	if_acquire(struct ifnet *, struct psref *);
 
 int if_tunnel_check_nesting(struct ifnet *, struct mbuf *, int);
 
-static inline if_index_t
+static __inline if_index_t
 if_get_index(const struct ifnet *ifp)
 {
 
@@ -1146,8 +1156,6 @@ struct	ifaddr *ifa_ifwithnet(const struct sockaddr *);
 struct	ifaddr *ifa_ifwithnet_psref(const struct sockaddr *, struct psref *);
 struct	ifaddr *ifa_ifwithladdr(const struct sockaddr *);
 struct	ifaddr *ifa_ifwithladdr_psref(const struct sockaddr *, struct psref *);
-struct	ifaddr *ifa_ifwithroute_psref(int, const struct sockaddr *,
-	    const struct sockaddr *, struct psref *);
 struct	ifaddr *ifaof_ifpforaddr(const struct sockaddr *, struct ifnet *);
 struct	ifaddr *ifaof_ifpforaddr_psref(const struct sockaddr *, struct ifnet *,
 	    struct psref *);
@@ -1300,6 +1308,9 @@ __END_DECLS
 #define IFNET_LOCK(ifp)		mutex_enter((ifp)->if_ioctl_lock)
 #define IFNET_UNLOCK(ifp)	mutex_exit((ifp)->if_ioctl_lock)
 #define IFNET_LOCKED(ifp)	mutex_owned((ifp)->if_ioctl_lock)
+
+#define IFNET_ASSERT_UNLOCKED(ifp)	\
+	KDASSERT(mutex_ownable((ifp)->if_ioctl_lock))
 
 extern struct pslist_head ifnet_pslist;
 extern kmutex_t ifnet_mtx;

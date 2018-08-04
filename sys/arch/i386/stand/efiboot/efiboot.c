@@ -1,4 +1,4 @@
-/*	$NetBSD: efiboot.c,v 1.6 2018/03/27 14:15:05 nonaka Exp $	*/
+/*	$NetBSD: efiboot.c,v 1.8 2018/06/08 11:52:30 nonaka Exp $	*/
 
 /*-
  * Copyright (c) 2016 Kimihiro Nonaka <nonaka@netbsd.org>
@@ -28,13 +28,12 @@
 
 #include "efiboot.h"
 
-#include "biosdisk_ll.h"
 #include "bootinfo.h"
 #include "devopen.h"
 
 EFI_HANDLE IH;
 EFI_DEVICE_PATH *efi_bootdp;
-int efi_bootdp_type = BIOSDISK_TYPE_HD;
+enum efi_boot_device_type efi_bootdp_type = BOOT_DEVICE_TYPE_HD;
 EFI_LOADED_IMAGE *efi_li;
 uintptr_t efi_main_sp;
 physaddr_t efi_loadaddr, efi_kernel_start;
@@ -79,12 +78,19 @@ efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE *systemTable)
 	for (dp = dp0; !IsDevicePathEnd(dp); dp = NextDevicePathNode(dp)) {
 		if (DevicePathType(dp) == MEDIA_DEVICE_PATH &&
 		    DevicePathSubType(dp) == MEDIA_CDROM_DP) {
-			efi_bootdp_type = BIOSDISK_TYPE_CD;
+			efi_bootdp_type = BOOT_DEVICE_TYPE_CD;
+			break;
+		}
+		if (DevicePathType(dp) == MESSAGING_DEVICE_PATH &&
+		    DevicePathSubType(dp) == MSG_MAC_ADDR_DP) {
+			efi_bootdp_type = BOOT_DEVICE_TYPE_NET;
 			break;
 		}
 	}
 
 	efi_disk_probe();
+	efi_pxe_probe();
+	efi_net_probe();
 
 	status = uefi_call_wrapper(BS->SetWatchdogTimer, 4, 0, 0, 0, NULL);
 	if (EFI_ERROR(status))

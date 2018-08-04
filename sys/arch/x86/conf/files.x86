@@ -1,7 +1,8 @@
-#	$NetBSD: files.x86,v 1.99 2018/03/28 14:56:59 maxv Exp $
+#	$NetBSD: files.x86,v 1.101 2018/05/22 11:09:57 maxv Exp $
 
 # options for MP configuration through the MP spec
-defflag opt_mpbios.h MPBIOS MPVERBOSE MPDEBUG MPBIOS_SCANPCI
+defflag opt_mpbios.h MPBIOS MPDEBUG MPBIOS_SCANPCI
+defparam opt_mpbios.h MPVERBOSE
 
 # MTRR support
 defflag                 MTRR
@@ -97,7 +98,6 @@ file 	arch/x86/x86/pmap.c		machdep
 file 	arch/x86/x86/x86_tlb.c		machdep
 file 	arch/x86/x86/pmc.c		machdep
 file	arch/x86/x86/procfs_machdep.c	procfs
-file	arch/x86/x86/spectre.c		machdep
 file 	arch/x86/x86/svs.c		machdep & svs
 file	arch/x86/x86/sys_machdep.c	machdep
 file	arch/x86/x86/syscall.c		machdep

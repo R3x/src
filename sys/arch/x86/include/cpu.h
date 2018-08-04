@@ -1,4 +1,4 @@
-/*	$NetBSD: cpu.h,v 1.90 2018/03/30 19:51:53 maxv Exp $	*/
+/*	$NetBSD: cpu.h,v 1.94 2018/06/30 14:21:19 riastradh Exp $	*/
 
 /*
  * Copyright (c) 1990 The Regents of the University of California.
@@ -236,6 +236,35 @@ struct cpu_info {
 	struct cpu_tss	*ci_tss;	/* Per-cpu TSSes; shared among LWPs */
 	int ci_tss_sel;			/* TSS selector of this cpu */
 
+#ifdef XEN
+	/* Xen raw system time at which we last ran hardclock.  */
+	uint64_t	ci_xen_hardclock_systime_ns;
+
+	/*
+	 * Last TSC-adjusted local Xen system time we observed.  Used
+	 * to detect whether the Xen clock has gone backwards.
+	 */
+	uint64_t	ci_xen_last_systime_ns;
+
+	/*
+	 * Distance in nanoseconds from the local view of system time
+	 * to the global view of system time, if the local time is
+	 * behind the global time.
+	 */
+	uint64_t	ci_xen_systime_ns_skew;
+
+	/* Xen periodic timer interrupt handle.  */
+	struct intrhand	*ci_xen_timer_intrhand;
+
+	/* Event counters for various pathologies that might happen.  */
+	struct evcnt	ci_xen_cpu_tsc_backwards_evcnt;
+	struct evcnt	ci_xen_tsc_delta_negative_evcnt;
+	struct evcnt	ci_xen_raw_systime_wraparound_evcnt;
+	struct evcnt	ci_xen_raw_systime_backwards_evcnt;
+	struct evcnt	ci_xen_systime_backwards_hardclock_evcnt;
+	struct evcnt	ci_xen_missed_hardclock_evcnt;
+#endif
+
 	/*
 	 * The following two are actually region_descriptors,
 	 * but that would pollute the namespace.
@@ -348,6 +377,7 @@ void cpu_kick(struct cpu_info *);
 
 void cpu_pcpuarea_init(struct cpu_info *);
 void cpu_svs_init(struct cpu_info *);
+void cpu_speculation_init(struct cpu_info *);
 
 #define	curcpu()		x86_curcpu()
 #define	curlwp			x86_curlwp()
@@ -416,6 +446,7 @@ extern int x86_fpu_save;
 #define	FPU_SAVE_XSAVEOPT	3
 extern unsigned int x86_fpu_save_size;
 extern uint64_t x86_xsave_features;
+extern bool x86_fpu_eager;
 
 extern void (*x86_cpu_idle)(void);
 #define	cpu_idle() (*x86_cpu_idle)()

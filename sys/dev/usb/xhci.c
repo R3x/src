@@ -1,4 +1,4 @@
-/*	$NetBSD: xhci.c,v 1.86 2018/02/07 15:55:58 prlw1 Exp $	*/
+/*	$NetBSD: xhci.c,v 1.93 2018/06/29 17:48:24 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 2013 Jonathan A. Kollasch
@@ -34,7 +34,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.86 2018/02/07 15:55:58 prlw1 Exp $");
+__KERNEL_RCSID(0, "$NetBSD: xhci.c,v 1.93 2018/06/29 17:48:24 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_usb.h"
@@ -593,12 +593,14 @@ xhci_detach(struct xhci_softc *sc, int flags)
 		rv = config_detach(sc->sc_child2, flags);
 		if (rv != 0)
 			return rv;
+		KASSERT(sc->sc_child2 == NULL);
 	}
 
 	if (sc->sc_child != NULL) {
 		rv = config_detach(sc->sc_child, flags);
 		if (rv != 0)
 			return rv;
+		KASSERT(sc->sc_child == NULL);
 	}
 
 	/* XXX unconfigure/free slots */
@@ -909,7 +911,6 @@ xhci_init(struct xhci_softc *sc)
 	/* Set up the bus struct for the usb 3 and usb 2 buses */
 	sc->sc_bus.ub_methods = &xhci_bus_methods;
 	sc->sc_bus.ub_pipesize = sizeof(struct xhci_pipe);
-	sc->sc_bus.ub_revision = USBREV_3_0;
 	sc->sc_bus.ub_usedma = true;
 	sc->sc_bus.ub_hcpriv = sc;
 
@@ -1234,7 +1235,16 @@ xhci_intr(void *v)
 
 	ret = xhci_intr1(sc);
 	if (ret) {
-		usb_schedsoftintr(&sc->sc_bus);
+		KASSERT(sc->sc_child || sc->sc_child2);
+
+		/*
+		 * One of child busses could be already detached. It doesn't
+		 * matter on which of the two the softintr is scheduled.
+		 */
+		if (sc->sc_child)
+			usb_schedsoftintr(&sc->sc_bus);
+		else
+			usb_schedsoftintr(&sc->sc_bus2);
 	}
 done:
 	mutex_spin_exit(&sc->sc_intr_lock);
@@ -1251,24 +1261,36 @@ xhci_intr1(struct xhci_softc * const sc)
 
 	usbsts = xhci_op_read_4(sc, XHCI_USBSTS);
 	DPRINTFN(16, "USBSTS %08jx", usbsts, 0, 0, 0);
-#if 0
-	if ((usbsts & (XHCI_STS_EINT|XHCI_STS_PCD)) == 0) {
+	if ((usbsts & (XHCI_STS_HSE | XHCI_STS_EINT | XHCI_STS_PCD |
+	    XHCI_STS_HCE)) == 0) {
+		DPRINTFN(16, "ignored intr not for %s",
+		    device_xname(sc->sc_dev), 0, 0, 0);
 		return 0;
 	}
-#endif
-	xhci_op_write_4(sc, XHCI_USBSTS,
-	    usbsts & (2|XHCI_STS_EINT|XHCI_STS_PCD)); /* XXX */
+
+	/*
+	 * Clear EINT and other transient flags, to not misenterpret
+	 * next shared interrupt. Also, to avoid race, EINT must be cleared
+	 * before XHCI_IMAN_INTR_PEND is cleared.
+	 */
+	xhci_op_write_4(sc, XHCI_USBSTS, usbsts & XHCI_STS_RSVDP0);
+
+#ifdef XHCI_DEBUG
 	usbsts = xhci_op_read_4(sc, XHCI_USBSTS);
 	DPRINTFN(16, "USBSTS %08jx", usbsts, 0, 0, 0);
+#endif
 
 	iman = xhci_rt_read_4(sc, XHCI_IMAN(0));
 	DPRINTFN(16, "IMAN0 %08jx", iman, 0, 0, 0);
 	iman |= XHCI_IMAN_INTR_PEND;
 	xhci_rt_write_4(sc, XHCI_IMAN(0), iman);
+
+#ifdef XHCI_DEBUG
 	iman = xhci_rt_read_4(sc, XHCI_IMAN(0));
 	DPRINTFN(16, "IMAN0 %08jx", iman, 0, 0, 0);
 	usbsts = xhci_op_read_4(sc, XHCI_USBSTS);
 	DPRINTFN(16, "USBSTS %08jx", usbsts, 0, 0, 0);
+#endif
 
 	return 1;
 }
@@ -2344,6 +2366,7 @@ xhci_new_device(device_t parent, struct usbd_bus *bus, int depth,
 		/* Allow device time to set new address */
 		usbd_delay_ms(dev, USB_SET_ADDRESS_SETTLE);
 
+		usb_syncmem(&xs->xs_dc_dma, 0, sc->sc_pgsz, BUS_DMASYNC_POSTREAD);
 		cp = xhci_slot_get_dcv(sc, xs, XHCI_DCI_SLOT);
 		HEXDUMP("slot context", cp, sc->sc_ctxsz);
 		uint8_t addr = XHCI_SCTX_3_DEV_ADDR_GET(le32toh(cp[3]));
@@ -3377,22 +3400,10 @@ xhci_roothub_ctrl(struct usbd_bus *bus, usb_device_request_t *req,
 		if (len == 0)
 			break;
 		switch (value) {
-		case C(0, UDESC_DEVICE): {
-			usb_device_descriptor_t devd;
-			totlen = min(buflen, sizeof(devd));
-			memcpy(&devd, buf, totlen);
-			USETW(devd.idVendor, sc->sc_id_vendor);
-			memcpy(buf, &devd, totlen);
-			break;
-		}
 #define sd ((usb_string_descriptor_t *)buf)
-		case C(1, UDESC_STRING):
-			/* Vendor */
-			totlen = usb_makestrdesc(sd, len, sc->sc_vendor);
-			break;
 		case C(2, UDESC_STRING):
 			/* Product */
-			totlen = usb_makestrdesc(sd, len, "xHCI Root Hub");
+			totlen = usb_makestrdesc(sd, len, "xHCI root hub");
 			break;
 #undef sd
 		default:

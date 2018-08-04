@@ -1,4 +1,4 @@
-/*	$NetBSD: ip_input.c,v 1.376 2018/02/24 07:37:09 ozaki-r Exp $	*/
+/*	$NetBSD: ip_input.c,v 1.385 2018/07/10 15:46:58 maxv Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -91,7 +91,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip_input.c,v 1.376 2018/02/24 07:37:09 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip_input.c,v 1.385 2018/07/10 15:46:58 maxv Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -569,6 +569,9 @@ ip_input(struct mbuf *m)
 	 * not fast-forwarded, they must clear the M_CANFASTFWD flag.
 	 * Note that filters must _never_ set this flag, as another filter
 	 * in the list may have previously cleared it.
+	 *
+	 * Don't call hooks if the packet has already been processed by
+	 * IPsec (encapsulated, tunnel mode).
 	 */
 #if defined(IPSEC)
 	if (!ipsec_used || !ipsec_indone(m))
@@ -584,8 +587,10 @@ ip_input(struct mbuf *m)
 			m = NULL;
 			goto out;
 		}
+		KASSERT(m->m_len >= sizeof(struct ip));
 		ip = mtod(m, struct ip *);
 		hlen = ip->ip_hl << 2;
+		KASSERT(m->m_len >= hlen);
 
 		/*
 		 * XXX The setting of "srcrt" here is to prevent ip_forward()
@@ -726,8 +731,7 @@ ip_input(struct mbuf *m)
 #ifdef IPSEC
 		/* Check the security policy (SP) for the packet */
 		if (ipsec_used) {
-			if (ipsec4_input(m, IP_FORWARDING |
-			    (ip_directedbcast ? IP_ALLOWBROADCAST : 0)) != 0) {
+			if (ipsec_ip_input(m, true) != 0) {
 				goto out;
 			}
 		}
@@ -748,7 +752,7 @@ ours:
 		/*
 		 * Pass to IP reassembly mechanism.
 		 */
-		if (ip_reass_packet(&m, ip) != 0) {
+		if (ip_reass_packet(&m) != 0) {
 			/* Failed; invalid fragment(s) or packet. */
 			goto out;
 		}
@@ -764,6 +768,8 @@ ours:
 		hlen = ip->ip_hl << 2;
 	}
 
+	M_VERIFY_PACKET(m);
+
 #ifdef IPSEC
 	/*
 	 * Enforce IPsec policy checking if we are seeing last header.
@@ -772,7 +778,7 @@ ours:
 	 */
 	if (ipsec_used &&
 	    (inetsw[ip_protox[ip->ip_p]].pr_flags & PR_LASTHDR) != 0) {
-		if (ipsec4_input(m, 0) != 0) {
+		if (ipsec_ip_input(m, false) != 0) {
 			goto out;
 		}
 	}
@@ -965,8 +971,8 @@ ip_dooptions(struct mbuf *m)
 				goto bad;
 			}
 			ip->ip_dst = ipaddr.sin_addr;
-			bcopy((void *)&ia->ia_addr.sin_addr,
-			    (void *)(cp + off), sizeof(struct in_addr));
+			memcpy(cp + off, &ia->ia_addr.sin_addr,
+			    sizeof(struct in_addr));
 			ia4_release(ia, &psref);
 			cp[IPOPT_OFFSET] += sizeof(struct in_addr);
 			/*
@@ -1001,7 +1007,7 @@ ip_dooptions(struct mbuf *m)
 			off--;			/* 0 origin */
 			if ((off + sizeof(struct in_addr)) > optlen)
 				break;
-			memcpy((void *)&ipaddr.sin_addr, (void *)(&ip->ip_dst),
+			memcpy((void *)&ipaddr.sin_addr, (void *)&ip->ip_dst,
 			    sizeof(ipaddr.sin_addr));
 			/*
 			 * locate outgoing interface; if we're the destination,
@@ -1018,8 +1024,8 @@ ip_dooptions(struct mbuf *m)
 			} else {
 				ia = ifatoia(ifa);
 			}
-			bcopy((void *)&ia->ia_addr.sin_addr,
-			    (void *)(cp + off), sizeof(struct in_addr));
+			memcpy(cp + off, &ia->ia_addr.sin_addr,
+			    sizeof(struct in_addr));
 			ia4_release(ia, &psref);
 			cp[IPOPT_OFFSET] += sizeof(struct in_addr);
 			break;
@@ -1081,8 +1087,8 @@ ip_dooptions(struct mbuf *m)
 					break;
 				}
 				ia = ifatoia(ifa);
-				bcopy(&ia->ia_addr.sin_addr,
-				    cp0, sizeof(struct in_addr));
+				memcpy(cp0, &ia->ia_addr.sin_addr,
+				    sizeof(struct in_addr));
 				pserialize_read_exit(_ss);
 				ipt->ipt_ptr += sizeof(struct in_addr);
 				break;
@@ -1464,7 +1470,7 @@ error:
 		}
 #ifdef IPSEC
 		if (ipsec_used)
-			(void)ipsec4_forward(mcopy, &destmtu);
+			ipsec_mtu(mcopy, &destmtu);
 #endif
 		IP_STATINC(IP_STAT_CANTFRAG);
 		break;
@@ -1493,7 +1499,7 @@ ip_savecontrol(struct inpcb *inp, struct mbuf **mp, struct ip *ip,
 	int inpflags = inp->inp_flags;
 
 	if (SOOPT_TIMESTAMP(so->so_options))
-		mp = sbsavetimestamp(so->so_options, m, mp);
+		mp = sbsavetimestamp(so->so_options, mp);
 
 	if (inpflags & INP_RECVDSTADDR) {
 		*mp = sbcreatecontrol(&ip->ip_dst,

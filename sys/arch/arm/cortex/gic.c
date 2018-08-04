@@ -1,4 +1,4 @@
-/*	$NetBSD: gic.c,v 1.32 2018/02/07 20:42:17 jmcneill Exp $	*/
+/*	$NetBSD: gic.c,v 1.34 2018/04/28 18:26:53 jakllsch Exp $	*/
 /*-
  * Copyright (c) 2012 The NetBSD Foundation, Inc.
  * All rights reserved.
@@ -34,7 +34,7 @@
 #define _INTR_PRIVATE
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: gic.c,v 1.32 2018/02/07 20:42:17 jmcneill Exp $");
+__KERNEL_RCSID(0, "$NetBSD: gic.c,v 1.34 2018/04/28 18:26:53 jakllsch Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -45,8 +45,9 @@ __KERNEL_RCSID(0, "$NetBSD: gic.c,v 1.32 2018/02/07 20:42:17 jmcneill Exp $");
 #include <sys/proc.h>
 
 #include <arm/armreg.h>
-#include <arm/cpufunc.h>
 #include <arm/atomic.h>
+#include <arm/cpufunc.h>
+#include <arm/locore.h>
 
 #include <arm/cortex/gic_reg.h>
 #include <arm/cortex/mpcore_var.h>
@@ -401,7 +402,7 @@ static void
 armgic_cpu_init_priorities(struct armgic_softc *sc)
 {
 	/* Set lowest priority, i.e. disable interrupts */
-	for (size_t i = 0; i < 32; i += 4) {
+	for (size_t i = 0; i < sc->sc_pic.pic_maxsources; i += 4) {
 		const bus_size_t priority_reg = GICD_IPRIORITYRn(i / 4);
 		gicd_write(sc, priority_reg, ~0);
 	}
@@ -411,7 +412,7 @@ static void
 armgic_cpu_update_priorities(struct armgic_softc *sc)
 {
 	uint32_t enabled = sc->sc_enabled_local;
-	for (size_t i = 0; i < 32; i += 4, enabled >>= 4) {
+	for (size_t i = 0; i < sc->sc_pic.pic_maxsources; i += 4, enabled >>= 4) {
 		const bus_size_t priority_reg = GICD_IPRIORITYRn(i / 4);
 		uint32_t priority = gicd_read(sc, priority_reg);
 		uint32_t byte_mask = 0xff;

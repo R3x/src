@@ -1,5 +1,5 @@
 /*	$OpenBSD: if_zyd.c,v 1.52 2007/02/11 00:08:04 jsg Exp $	*/
-/*	$NetBSD: if_zyd.c,v 1.45 2018/01/21 13:57:12 skrll Exp $	*/
+/*	$NetBSD: if_zyd.c,v 1.48 2018/06/26 06:48:02 msaitoh Exp $	*/
 
 /*-
  * Copyright (c) 2006 by Damien Bergamini <damien.bergamini@free.fr>
@@ -23,7 +23,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: if_zyd.c,v 1.45 2018/01/21 13:57:12 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: if_zyd.c,v 1.48 2018/06/26 06:48:02 msaitoh Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_usb.h"
@@ -239,12 +239,6 @@ Static void	zyd_iter_func(void *, struct ieee80211_node *);
 Static void	zyd_amrr_timeout(void *);
 Static void	zyd_newassoc(struct ieee80211_node *, int);
 
-static const struct ieee80211_rateset zyd_rateset_11b =
-	{ 4, { 2, 4, 11, 22 } };
-
-static const struct ieee80211_rateset zyd_rateset_11g =
-	{ 12, { 2, 4, 11, 22, 12, 18, 24, 36, 48, 72, 96, 108 } };
-
 int
 zyd_match(device_t parent, cfdata_t match, void *aux)
 {
@@ -296,7 +290,6 @@ zyd_attachhook(device_t self)
 	}
 
 	firmware_free(fw, size);
-	sc->sc_flags |= ZD1211_FWLOADED;
 
 	/* complete the attach process */
 	if ((error = zyd_complete_attach(sc)) == 0)
@@ -315,7 +308,6 @@ zyd_attach(device_t parent, device_t self, void *aux)
 
 	sc->sc_dev = self;
 	sc->sc_udev = uaa->uaa_device;
-	sc->sc_flags = 0;
 
 	aprint_naive("\n");
 	aprint_normal("\n");
@@ -419,8 +411,8 @@ zyd_complete_attach(struct zyd_softc *sc)
 	    IEEE80211_C_WEP;		/* s/w WEP */
 
 	/* set supported .11b and .11g rates */
-	ic->ic_sup_rates[IEEE80211_MODE_11B] = zyd_rateset_11b;
-	ic->ic_sup_rates[IEEE80211_MODE_11G] = zyd_rateset_11g;
+	ic->ic_sup_rates[IEEE80211_MODE_11B] = ieee80211_std_rateset_11b;
+	ic->ic_sup_rates[IEEE80211_MODE_11G] = ieee80211_std_rateset_11g;
 
 	/* set supported .11b and .11g channels (1 through 14) */
 	for (i = 1; i <= 14; i++) {
@@ -1969,7 +1961,7 @@ zyd_rx_data(struct zyd_softc *sc, const uint8_t *buf, uint16_t len)
 		tap->wr_rssi = stat->rssi;
 		tap->wr_rate = rates[plcp->signal & 0xf];
 
-		bpf_mtap2(sc->sc_drvbpf, tap, sc->sc_rxtap_len, m);
+		bpf_mtap2(sc->sc_drvbpf, tap, sc->sc_rxtap_len, m, BPF_D_IN);
 	}
 
 	wh = mtod(m, struct ieee80211_frame *);
@@ -2129,7 +2121,7 @@ zyd_tx_mgt(struct zyd_softc *sc, struct mbuf *m0, struct ieee80211_node *ni)
 		tap->wt_chan_freq = htole16(ic->ic_curchan->ic_freq);
 		tap->wt_chan_flags = htole16(ic->ic_curchan->ic_flags);
 
-		bpf_mtap2(sc->sc_drvbpf, tap, sc->sc_txtap_len, m0);
+		bpf_mtap2(sc->sc_drvbpf, tap, sc->sc_txtap_len, m0, BPF_D_OUT);
 	}
 
 	m_copydata(m0, 0, m0->m_pkthdr.len,
@@ -2286,7 +2278,7 @@ zyd_tx_data(struct zyd_softc *sc, struct mbuf *m0, struct ieee80211_node *ni)
 		tap->wt_chan_freq = htole16(ic->ic_curchan->ic_freq);
 		tap->wt_chan_flags = htole16(ic->ic_curchan->ic_flags);
 
-		bpf_mtap2(sc->sc_drvbpf, tap, sc->sc_txtap_len, m0);
+		bpf_mtap2(sc->sc_drvbpf, tap, sc->sc_txtap_len, m0, BPF_D_OUT);
 	}
 
 	m_copydata(m0, 0, m0->m_pkthdr.len,
@@ -2329,7 +2321,7 @@ zyd_start(struct ifnet *ifp)
 
 			ni = M_GETCTX(m0, struct ieee80211_node *);
 			M_CLEARCTX(m0);
-			bpf_mtap3(ic->ic_rawbpf, m0);
+			bpf_mtap3(ic->ic_rawbpf, m0, BPF_D_OUT);
 			if (zyd_tx_mgt(sc, m0, ni) != 0)
 				break;
 		} else {
@@ -2354,13 +2346,13 @@ zyd_start(struct ifnet *ifp)
 				m_freem(m0);
 				continue;
 			}
-			bpf_mtap(ifp, m0);
+			bpf_mtap(ifp, m0, BPF_D_OUT);
 			if ((m0 = ieee80211_encap(ic, m0, ni)) == NULL) {
 				ieee80211_free_node(ni);
 				ifp->if_oerrors++;
 				continue;
 			}
-			bpf_mtap3(ic->ic_rawbpf, m0);
+			bpf_mtap3(ic->ic_rawbpf, m0, BPF_D_OUT);
 			if (zyd_tx_data(sc, m0, ni) != 0) {
 				ieee80211_free_node(ni);
 				ifp->if_oerrors++;

@@ -1,4 +1,4 @@
-/*	$NetBSD: ip6_output.c,v 1.203 2018/02/27 15:01:30 maxv Exp $	*/
+/*	$NetBSD: ip6_output.c,v 1.211 2018/06/01 08:56:00 maxv Exp $	*/
 /*	$KAME: ip6_output.c,v 1.172 2001/03/25 09:55:56 itojun Exp $	*/
 
 /*
@@ -62,7 +62,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ip6_output.c,v 1.203 2018/02/27 15:01:30 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ip6_output.c,v 1.211 2018/06/01 08:56:00 maxv Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -104,11 +104,7 @@ __KERNEL_RCSID(0, "$NetBSD: ip6_output.c,v 1.203 2018/02/27 15:01:30 maxv Exp $"
 #include <netipsec/ipsec.h>
 #include <netipsec/ipsec6.h>
 #include <netipsec/key.h>
-#include <netipsec/xform.h>
 #endif
-
-
-#include <net/net_osdep.h>
 
 extern pfil_head_t *inet6_pfil_hook;	/* XXX */
 
@@ -144,34 +140,11 @@ static int ip6_pcbopts(struct ip6_pktopts **, struct socket *, struct sockopt *)
 static int
 ip6_handle_rthdr(struct ip6_rthdr *rh, struct ip6_hdr *ip6)
 {
-	struct ip6_rthdr0 *rh0;
-	struct in6_addr *addr;
-	struct sockaddr_in6 sa;
 	int error = 0;
 
 	switch (rh->ip6r_type) {
 	case IPV6_RTHDR_TYPE_0:
-		rh0 = (struct ip6_rthdr0 *)rh;
-		addr = (struct in6_addr *)(rh0 + 1);
-
-		/*
-		 * construct a sockaddr_in6 form of the first hop.
-		 *
-		 * XXX we may not have enough information about its scope zone;
-		 * there is no standard API to pass the information from the
-		 * application.
-		 */
-		sockaddr_in6_init(&sa, addr, 0, 0, 0);
-		error = sa6_embedscope(&sa, ip6_use_defzone);
-		if (error != 0)
-			break;
-		memmove(&addr[0], &addr[1],
-		    sizeof(struct in6_addr) * (rh0->ip6r0_segleft - 1));
-		addr[rh0->ip6r0_segleft - 1] = ip6->ip6_dst;
-		ip6->ip6_dst = sa.sin6_addr;
-		/* XXX */
-		in6_clearscope(addr + rh0->ip6r0_segleft - 1);
-		break;
+		/* Dropped, RFC5095. */
 	default:	/* is it possible? */
 		error = EINVAL;
 	}
@@ -268,7 +241,7 @@ ip6_output(
 	}
 #endif
 
-	M_CSUM_DATA_IPv6_HL_SET(m->m_pkthdr.csum_data, sizeof(struct ip6_hdr));
+	M_CSUM_DATA_IPv6_SET(m->m_pkthdr.csum_data, sizeof(struct ip6_hdr));
 
 #define MAKE_EXTHDR(hp, mp)						\
     do {								\
@@ -427,7 +400,7 @@ ip6_output(
 		MAKE_CHAIN(exthdrs.ip6e_rthdr, mprev, nexthdrp,
 		    IPPROTO_ROUTING);
 
-		M_CSUM_DATA_IPv6_HL_SET(m->m_pkthdr.csum_data,
+		M_CSUM_DATA_IPv6_SET(m->m_pkthdr.csum_data,
 		    sizeof(struct ip6_hdr) + optlen);
 	}
 
@@ -902,32 +875,9 @@ ip6_output(
 		const int hlen = unfragpartlen;
 		struct ip6_frag *ip6f;
 		u_char nextproto;
-#if 0		/* see below */
-		struct ip6ctlparam ip6cp;
-		u_int32_t mtu32;
-#endif
 
 		if (mtu > IPV6_MAXPACKET)
 			mtu = IPV6_MAXPACKET;
-
-#if 0
-		/*
-		 * It is believed this code is a leftover from the
-		 * development of the IPV6_RECVPATHMTU sockopt and
-		 * associated work to implement RFC3542.
-		 * It's not entirely clear what the intent of the API
-		 * is at this point, so disable this code for now.
-		 * The IPV6_RECVPATHMTU sockopt and/or IPV6_DONTFRAG
-		 * will send notifications if the application requests.
-		 */
-
-		/* Notify a proper path MTU to applications. */
-		mtu32 = (u_int32_t)mtu;
-		memset(&ip6cp, 0, sizeof(ip6cp));
-		ip6cp.ip6c_cmdarg = (void *)&mtu32;
-		pfctlinput2(PRC_MSGSIZE,
-		    rtcache_getdst(ro_pmtu), &ip6cp);
-#endif
 
 		/*
 		 * Must be able to put at least 8 bytes per fragment.
@@ -1012,7 +962,7 @@ ip6_output(
 
 			mhip6->ip6_plen = htons((u_int16_t)(len + hlen +
 			    sizeof(*ip6f) - sizeof(struct ip6_hdr)));
-			if ((m_frgpart = m_copy(m0, off, len)) == NULL) {
+			if ((m_frgpart = m_copym(m0, off, len, M_DONTWAIT)) == NULL) {
 				error = ENOBUFS;
 				IP6_STATINC(IP6_STAT_ODROPPED);
 				goto sendorfree;
@@ -1134,7 +1084,7 @@ in6_delayed_cksum(struct mbuf *m)
 	KASSERT((m->m_pkthdr.csum_flags
 	    & (M_CSUM_UDPv4|M_CSUM_TCPv4|M_CSUM_TSOv4)) == 0);
 
-	offset = M_CSUM_DATA_IPv6_HL(m->m_pkthdr.csum_data);
+	offset = M_CSUM_DATA_IPv6_IPHL(m->m_pkthdr.csum_data);
 	csum = in6_cksum(m, 0, offset, m->m_pkthdr.len - offset);
 	if (csum == 0 && (m->m_pkthdr.csum_flags & M_CSUM_UDPv6) != 0) {
 		csum = 0xffff;
@@ -1773,7 +1723,7 @@ else 					\
 #if defined(IPSEC)
 		case IPV6_IPSEC_POLICY:
 			if (ipsec_enabled) {
-				error = ipsec_set_policy(in6p, optname,
+				error = ipsec_set_policy(in6p,
 				    sopt->sopt_data, sopt->sopt_size,
 				    kauth_cred_get());
 				break;
@@ -3206,13 +3156,7 @@ ip6_setpktopt(int optname, u_char *buf, int len, struct ip6_pktopts *opt,
 			return (EINVAL);
 		switch (rth->ip6r_type) {
 		case IPV6_RTHDR_TYPE_0:
-			if (rth->ip6r_len == 0)	/* must contain one addr */
-				return (EINVAL);
-			if (rth->ip6r_len % 2) /* length must be even */
-				return (EINVAL);
-			if (rth->ip6r_len / 2 != rth->ip6r_segleft)
-				return (EINVAL);
-			break;
+			/* Dropped, RFC5095. */
 		default:
 			return (EINVAL);	/* not supported */
 		}
@@ -3290,7 +3234,7 @@ ip6_mloopback(struct ifnet *ifp, struct mbuf *m,
 	struct mbuf *copym;
 	struct ip6_hdr *ip6;
 
-	copym = m_copy(m, 0, M_COPYALL);
+	copym = m_copypacket(m, M_DONTWAIT);
 	if (copym == NULL)
 		return;
 

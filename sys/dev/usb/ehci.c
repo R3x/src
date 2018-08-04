@@ -1,4 +1,4 @@
-/*	$NetBSD: ehci.c,v 1.257 2017/11/17 08:22:02 skrll Exp $ */
+/*	$NetBSD: ehci.c,v 1.259 2018/06/06 01:49:09 maya Exp $ */
 
 /*
  * Copyright (c) 2004-2012 The NetBSD Foundation, Inc.
@@ -53,7 +53,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: ehci.c,v 1.257 2017/11/17 08:22:02 skrll Exp $");
+__KERNEL_RCSID(0, "$NetBSD: ehci.c,v 1.259 2018/06/06 01:49:09 maya Exp $");
 
 #include "ohci.h"
 #include "uhci.h"
@@ -2317,20 +2317,7 @@ ehci_roothub_ctrl(struct usbd_bus *bus, usb_device_request_t *req,
 		if (len == 0)
 			break;
 		switch (value) {
-		case C(0, UDESC_DEVICE): {
-			usb_device_descriptor_t devd;
-			totlen = min(buflen, sizeof(devd));
-			memcpy(&devd, buf, totlen);
-			USETW(devd.idVendor, sc->sc_id_vendor);
-			memcpy(buf, &devd, totlen);
-			break;
-
-		}
 #define sd ((usb_string_descriptor_t *)buf)
-		case C(1, UDESC_STRING):
-			/* Vendor */
-			totlen = usb_makestrdesc(sd, len, sc->sc_vendor);
-			break;
 		case C(2, UDESC_STRING):
 			/* Product */
 			totlen = usb_makestrdesc(sd, len, "EHCI root hub");
@@ -4269,8 +4256,8 @@ ehci_device_fs_isoc_transfer(struct usbd_xfer *xfer)
 
 	KASSERT(err == USBD_NORMAL_COMPLETION);
 
-	struct ehci_pipe *epipe = EHCI_XFER2EPIPE(xfer);;
-	struct usbd_device *dev = xfer->ux_pipe->up_dev;;
+	struct ehci_pipe *epipe = EHCI_XFER2EPIPE(xfer);
+	struct usbd_device *dev = xfer->ux_pipe->up_dev;
 	struct ehci_xfer *exfer = EHCI_XFER2EXFER(xfer);
 	ehci_soft_sitd_t *sitd;
 	usb_dma_t *dma_buf;

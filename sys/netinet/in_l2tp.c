@@ -1,4 +1,4 @@
-/*	$NetBSD: in_l2tp.c,v 1.12 2018/01/26 07:49:15 maxv Exp $	*/
+/*	$NetBSD: in_l2tp.c,v 1.15 2018/06/21 10:37:50 knakahara Exp $	*/
 
 /*
  * Copyright (c) 2017 Internet Initiative Japan Inc.
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in_l2tp.c,v 1.12 2018/01/26 07:49:15 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in_l2tp.c,v 1.15 2018/06/21 10:37:50 knakahara Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_l2tp.h"
@@ -42,6 +42,7 @@ __KERNEL_RCSID(0, "$NetBSD: in_l2tp.c,v 1.12 2018/01/26 07:49:15 maxv Exp $");
 #include <sys/ioctl.h>
 #include <sys/syslog.h>
 #include <sys/kernel.h>
+#include <sys/socketvar.h> /* For softnet_lock */
 
 #include <net/if.h>
 #include <net/route.h>
@@ -67,8 +68,6 @@ __KERNEL_RCSID(0, "$NetBSD: in_l2tp.c,v 1.12 2018/01/26 07:49:15 maxv Exp $");
 #endif
 
 #include <net/if_l2tp.h>
-
-#include <net/net_osdep.h>
 
 int ip_l2tp_ttl = L2TP_TTL;
 
@@ -209,9 +208,9 @@ in_l2tp_output(struct l2tp_variant *var, struct mbuf *m)
 	memcpy(mtod(m, struct ip *), &iphdr, sizeof(struct ip));
 
 	lro = percpu_getref(sc->l2tp_ro_percpu);
-	mutex_enter(&lro->lr_lock);
+	mutex_enter(lro->lr_lock);
 	if ((rt = rtcache_lookup(&lro->lr_ro, var->lv_pdst)) == NULL) {
-		mutex_exit(&lro->lr_lock);
+		mutex_exit(lro->lr_lock);
 		percpu_putref(sc->l2tp_ro_percpu);
 		m_freem(m);
 		error = ENETUNREACH;
@@ -221,7 +220,7 @@ in_l2tp_output(struct l2tp_variant *var, struct mbuf *m)
 	if (rt->rt_ifp == ifp) {
 		rtcache_unref(rt, &lro->lr_ro);
 		rtcache_free(&lro->lr_ro);
-		mutex_exit(&lro->lr_lock);
+		mutex_exit(lro->lr_lock);
 		percpu_putref(sc->l2tp_ro_percpu);
 		m_freem(m);
 		error = ENETUNREACH;	/*XXX*/
@@ -236,7 +235,7 @@ in_l2tp_output(struct l2tp_variant *var, struct mbuf *m)
 	m->m_pkthdr.csum_flags  = 0;
 
 	error = ip_output(m, NULL, &lro->lr_ro, 0, NULL, NULL);
-	mutex_exit(&lro->lr_lock);
+	mutex_exit(lro->lr_lock);
 	percpu_putref(sc->l2tp_ro_percpu);
 	return error;
 
@@ -277,7 +276,9 @@ in_l2tp_input(struct mbuf *m, int off, int proto, void *eparg __unused)
 		 * L2TPv3 control packet received.
 		 * userland daemon(l2tpd?) should process.
 		 */
+		SOFTNET_LOCK_IF_NET_MPSAFE();
 		rip_input(m, off, proto);
+		SOFTNET_UNLOCK_IF_NET_MPSAFE();
 		return;
 	}
 

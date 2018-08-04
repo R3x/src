@@ -1,4 +1,4 @@
-# $NetBSD: GENERIC,v 1.486 2018/03/22 12:26:29 rin Exp $
+# $NetBSD: GENERIC,v 1.493 2018/06/07 13:36:28 thorpej Exp $
 #
 # GENERIC machine description file
 #
@@ -22,7 +22,7 @@ include 	"arch/amd64/conf/std.amd64"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident		"GENERIC-$Revision: 1.486 $"
+#ident		"GENERIC-$Revision: 1.493 $"
 
 maxusers	64		# estimated number of users
 
@@ -76,6 +76,9 @@ options 	SYSCTL_INCLUDE_DESCR	# Include sysctl descriptions in kernel
 # CPU-related options
 #options 	USER_LDT	# user-settable LDT; used by WINE
 options 	SVS		# Separate Virtual Space
+makeoptions	SPECTRE_V2_GCC_MITIGATION=1	# GCC Spectre variant 2
+						# migitation
+options 	SPECTRE_V2_GCC_MITIGATION
 
 # CPU features
 acpicpu*	at cpu?		# ACPI CPU (including frequency scaling)
@@ -763,6 +766,7 @@ bce*	at pci? dev ? function ?	# Broadcom 440x 10/100 Ethernet
 bge*	at pci? dev ? function ?	# Broadcom 570x gigabit Ethernet
 bnx*	at pci? dev ? function ?	# Broadcom NetXtremeII gigabit Ethernet
 bwi*	at pci? dev ? function ?	# Broadcom BCM43xx wireless
+bwfm*	at pci? dev ? function ?	# Broadcom FullMAC
 dge*	at pci? dev ? function ?	# Intel 82597 10GbE LR
 en*	at pci? dev ? function ?	# ENI/Adaptec ATM
 ep*	at pci? dev ? function ?	# 3Com 3c59x

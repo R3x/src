@@ -1,4 +1,4 @@
-/*	$NetBSD: tcp_input.c,v 1.403 2018/03/30 08:25:06 maxv Exp $	*/
+/*	$NetBSD: tcp_input.c,v 1.408 2018/05/18 18:58:51 maxv Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -148,7 +148,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: tcp_input.c,v 1.403 2018/03/30 08:25:06 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: tcp_input.c,v 1.408 2018/05/18 18:58:51 maxv Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -200,7 +200,6 @@ __KERNEL_RCSID(0, "$NetBSD: tcp_input.c,v 1.403 2018/03/30 08:25:06 maxv Exp $")
 #endif
 
 #ifndef INET6
-/* always need ip6.h for IP6_EXTHDR_GET */
 #include <netinet/ip6.h>
 #endif
 
@@ -210,7 +209,6 @@ __KERNEL_RCSID(0, "$NetBSD: tcp_input.c,v 1.403 2018/03/30 08:25:06 maxv Exp $")
 #include <netinet/tcp_timer.h>
 #include <netinet/tcp_var.h>
 #include <netinet/tcp_private.h>
-#include <netinet/tcpip.h>
 #include <netinet/tcp_congctl.h>
 #include <netinet/tcp_debug.h>
 
@@ -223,7 +221,6 @@ __KERNEL_RCSID(0, "$NetBSD: tcp_input.c,v 1.403 2018/03/30 08:25:06 maxv Exp $")
 
 #ifdef IPSEC
 #include <netipsec/ipsec.h>
-#include <netipsec/ipsec_var.h>
 #include <netipsec/key.h>
 #ifdef INET6
 #include <netipsec/ipsec6.h>
@@ -405,8 +402,6 @@ static void tcp4_log_refused(const struct ip *, const struct tcphdr *);
 static void tcp6_log_refused(const struct ip6_hdr *, const struct tcphdr *);
 #endif
 
-#define	TRAVERSE(x) while ((x)->m_next) (x) = (x)->m_next
-
 #if defined(MBUFTRACE)
 struct mowner tcp_reass_mowner = MOWNER_INIT("tcp", "reass");
 #endif /* defined(MBUFTRACE) */
@@ -501,8 +496,7 @@ tcp_reass(struct tcpcb *tp, const struct tcphdr *th, struct mbuf *m, int tlen)
 		if (pkt_seq == p->ipqe_seq + p->ipqe_len) {
 			p->ipqe_len += pkt_len;
 			p->ipqe_flags |= pkt_flags;
-			m_cat(p->ipre_mlast, m);
-			TRAVERSE(p->ipre_mlast);
+			m_cat(p->ipqe_m, m);
 			m = NULL;
 			tiqe = p;
 			TAILQ_REMOVE(&tp->timeq, p, ipqe_timeq);
@@ -533,8 +527,6 @@ tcp_reass(struct tcpcb *tp, const struct tcphdr *th, struct mbuf *m, int tlen)
 			q->ipqe_flags |= pkt_flags;
 			m_cat(m, q->ipqe_m);
 			q->ipqe_m = m;
-			q->ipre_mlast = m; /* last mbuf may have changed */
-			TRAVERSE(q->ipre_mlast);
 			tiqe = q;
 			TAILQ_REMOVE(&tp->timeq, q, ipqe_timeq);
 			TCP_REASS_COUNTER_INCR(&tcp_reass_prependfirst);
@@ -562,8 +554,7 @@ tcp_reass(struct tcpcb *tp, const struct tcphdr *th, struct mbuf *m, int tlen)
 			pkt_len += q->ipqe_len;
 			pkt_flags |= q->ipqe_flags;
 			pkt_seq = q->ipqe_seq;
-			m_cat(q->ipre_mlast, m);
-			TRAVERSE(q->ipre_mlast);
+			m_cat(q->ipqe_m, m);
 			m = q->ipqe_m;
 			TCP_REASS_COUNTER_INCR(&tcp_reass_append);
 			goto free_ipqe;
@@ -629,8 +620,7 @@ tcp_reass(struct tcpcb *tp, const struct tcphdr *th, struct mbuf *m, int tlen)
 			int overlap = q->ipqe_seq + q->ipqe_len - pkt_seq;
 			m_adj(m, overlap);
 			rcvpartdupbyte += overlap;
-			m_cat(q->ipre_mlast, m);
-			TRAVERSE(q->ipre_mlast);
+			m_cat(q->ipqe_m, m);
 			m = q->ipqe_m;
 			pkt_seq = q->ipqe_seq;
 			pkt_len += q->ipqe_len - overlap;
@@ -750,7 +740,6 @@ insert_it:
 	 * Insert the new fragment queue entry into both queues.
 	 */
 	tiqe->ipqe_m = m;
-	tiqe->ipre_mlast = m;
 	tiqe->ipqe_seq = pkt_seq;
 	tiqe->ipqe_len = pkt_len;
 	tiqe->ipqe_flags = pkt_flags;
@@ -1248,7 +1237,7 @@ tcp_input(struct mbuf *m, ...)
 	}
 #endif
 
-	IP6_EXTHDR_GET(th, struct tcphdr *, m, toff, sizeof(struct tcphdr));
+	M_REGION_GET(th, struct tcphdr *, m, toff, sizeof(struct tcphdr));
 	if (th == NULL) {
 		TCP_STATINC(TCP_STAT_RCVSHORT);
 		return;
@@ -1346,7 +1335,7 @@ tcp_input(struct mbuf *m, ...)
 	tlen -= off;
 
 	if (off > sizeof(struct tcphdr)) {
-		IP6_EXTHDR_GET(th, struct tcphdr *, m, toff, off);
+		M_REGION_GET(th, struct tcphdr *, m, toff, off);
 		if (th == NULL) {
 			TCP_STATINC(TCP_STAT_RCVSHORT);
 			return;
@@ -3893,29 +3882,6 @@ syn_cache_get(struct sockaddr *src, struct sockaddr *dst,
 		}
 		ip6_savecontrol(in6p, &in6p->in6p_options,
 		    mtod(m, struct ip6_hdr *), m);
-	}
-#endif
-
-#if defined(IPSEC)
-	if (ipsec_used) {
-		/*
-		 * we make a copy of policy, instead of sharing the policy, for
-		 * better behavior in terms of SA lookup and dead SA removal.
-		 */
-		if (inp) {
-			/* copy old policy into new socket's */
-			if (ipsec_copy_pcbpolicy(sotoinpcb(oso)->inp_sp,
-			    inp->inp_sp))
-				printf("tcp_input: could not copy policy\n");
-		}
-#ifdef INET6
-		else if (in6p) {
-			/* copy old policy into new socket's */
-			if (ipsec_copy_pcbpolicy(sotoin6pcb(oso)->in6p_sp,
-			    in6p->in6p_sp))
-				printf("tcp_input: could not copy policy\n");
-		}
-#endif
 	}
 #endif
 

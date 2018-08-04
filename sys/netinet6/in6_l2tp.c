@@ -1,4 +1,4 @@
-/*	$NetBSD: in6_l2tp.c,v 1.14 2018/01/26 07:49:15 maxv Exp $	*/
+/*	$NetBSD: in6_l2tp.c,v 1.16 2018/06/21 10:37:50 knakahara Exp $	*/
 
 /*
  * Copyright (c) 2017 Internet Initiative Japan Inc.
@@ -27,7 +27,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: in6_l2tp.c,v 1.14 2018/01/26 07:49:15 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: in6_l2tp.c,v 1.16 2018/06/21 10:37:50 knakahara Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_l2tp.h"
@@ -202,9 +202,9 @@ in6_l2tp_output(struct l2tp_variant *var, struct mbuf *m)
 	memcpy(mtod(m, struct ip6_hdr *), &ip6hdr, sizeof(struct ip6_hdr));
 
 	lro = percpu_getref(sc->l2tp_ro_percpu);
-	mutex_enter(&lro->lr_lock);
+	mutex_enter(lro->lr_lock);
 	if ((rt = rtcache_lookup(&lro->lr_ro, var->lv_pdst)) == NULL) {
-		mutex_exit(&lro->lr_lock);
+		mutex_exit(lro->lr_lock);
 		percpu_putref(sc->l2tp_ro_percpu);
 		m_freem(m);
 		return ENETUNREACH;
@@ -214,7 +214,7 @@ in6_l2tp_output(struct l2tp_variant *var, struct mbuf *m)
 	if (rt->rt_ifp == ifp) {
 		rtcache_unref(rt, &lro->lr_ro);
 		rtcache_free(&lro->lr_ro);
-		mutex_exit(&lro->lr_lock);
+		mutex_exit(lro->lr_lock);
 		percpu_putref(sc->l2tp_ro_percpu);
 		m_freem(m);
 		return ENETUNREACH;	/* XXX */
@@ -228,7 +228,7 @@ in6_l2tp_output(struct l2tp_variant *var, struct mbuf *m)
 	m->m_pkthdr.csum_flags  = 0;
 
 	error = ip6_output(m, 0, &lro->lr_ro, 0, NULL, NULL, NULL);
-	mutex_exit(&lro->lr_lock);
+	mutex_exit(lro->lr_lock);
 	percpu_putref(sc->l2tp_ro_percpu);
 	return(error);
 
@@ -267,11 +267,15 @@ in6_l2tp_input(struct mbuf **mp, int *offp, int proto, void *eparg __unused)
 	log(LOG_DEBUG, "%s: sess_id = %" PRIu32 "\n", __func__, sess_id);
 #endif
 	if (sess_id == 0) {
+		int rv;
 		/*
 		 * L2TPv3 control packet received.
 		 * userland daemon(l2tpd?) should process.
 		 */
-		return rip6_input(mp, offp, proto);
+		SOFTNET_LOCK_IF_NET_MPSAFE();
+		rv = rip6_input(mp, offp, proto);
+		SOFTNET_UNLOCK_IF_NET_MPSAFE();
+		return rv;
 	}
 
 	var = l2tp_lookup_session_ref(sess_id, &psref);

@@ -1,4 +1,4 @@
-/* $NetBSD: tegra_platform.c,v 1.10 2018/03/17 18:34:09 ryo Exp $ */
+/* $NetBSD: tegra_platform.c,v 1.13 2018/07/08 11:37:50 jmcneill Exp $ */
 
 /*-
  * Copyright (c) 2017 Jared D. McNeill <jmcneill@invisible.ca>
@@ -33,7 +33,7 @@
 #include "ukbd.h"
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: tegra_platform.c,v 1.10 2018/03/17 18:34:09 ryo Exp $");
+__KERNEL_RCSID(0, "$NetBSD: tegra_platform.c,v 1.13 2018/07/08 11:37:50 jmcneill Exp $");
 
 #include <sys/param.h>
 #include <sys/bus.h>
@@ -50,8 +50,12 @@ __KERNEL_RCSID(0, "$NetBSD: tegra_platform.c,v 1.10 2018/03/17 18:34:09 ryo Exp 
 
 #include <arm/nvidia/tegra_reg.h>
 #include <arm/nvidia/tegra_var.h>
+#include <arm/nvidia/tegra_platform.h>
 
 #include <arm/fdt/arm_fdtvar.h>
+
+#include <arm/arm/psci.h>
+#include <arm/fdt/psci_fdt.h>
 
 #if NUKBD > 0
 #include <dev/usb/ukbdvar.h>
@@ -61,6 +65,8 @@ __KERNEL_RCSID(0, "$NetBSD: tegra_platform.c,v 1.10 2018/03/17 18:34:09 ryo Exp 
 #include <dev/ic/comreg.h>
 
 #define	PLLP_OUT0_FREQ	408000000
+
+void tegra_platform_early_putchar(char);
 
 static const struct pmap_devmap *
 tegra_platform_devmap(void)
@@ -84,40 +90,51 @@ tegra_platform_devmap(void)
 	return devmap;
 }
 
+#ifdef SOC_TEGRA124
 static void
 tegra124_platform_bootstrap(void)
 {
 	tegra_bootstrap();
 
+#ifdef MULTIPROCESSOR
 	tegra124_mpinit();
+#endif
 }
+#endif
 
+#ifdef SOC_TEGRA210
 static void
 tegra210_platform_bootstrap(void)
 {
 	tegra_bootstrap();
 
-	tegra210_mpinit();
+#if defined(MULTIPROCESSOR) && defined(__aarch64__)
+	psci_fdt_bootstrap();
+#endif
 }
+#endif
 
 static void
 tegra_platform_init_attach_args(struct fdt_attach_args *faa)
 {
-	extern struct bus_space armv7_generic_bs_tag;
-	extern struct bus_space armv7_generic_a4x_bs_tag;
+	extern struct bus_space arm_generic_bs_tag;
+	extern struct bus_space arm_generic_a4x_bs_tag;
 	extern struct arm32_bus_dma_tag arm_generic_dma_tag;
 
-	faa->faa_bst = &armv7_generic_bs_tag;
-	faa->faa_a4x_bst = &armv7_generic_a4x_bs_tag;
+	faa->faa_bst = &arm_generic_bs_tag;
+	faa->faa_a4x_bst = &arm_generic_a4x_bs_tag;
 	faa->faa_dmat = &arm_generic_dma_tag;
 }
 
-static void
+void
 tegra_platform_early_putchar(char c)
 {
 #ifdef CONSADDR
 #define CONSADDR_VA	(CONSADDR - TEGRA_APB_BASE + TEGRA_APB_VBASE)
-	volatile uint32_t *uartaddr = (volatile uint32_t *)CONSADDR_VA;
+
+	volatile uint32_t *uartaddr = cpu_earlydevice_va_p() ?
+	    (volatile uint32_t *)CONSADDR_VA :
+	    (volatile uint32_t *)CONSADDR;
 
 	while ((uartaddr[com_lsr] & LSR_TXRDY) == 0)
 		;
@@ -194,6 +211,7 @@ tegra_platform_uart_freq(void)
 	return PLLP_OUT0_FREQ;
 }
 
+#ifdef SOC_TEGRA124
 static const struct arm_platform tegra124_platform = {
 	.devmap = tegra_platform_devmap,
 	.bootstrap = tegra124_platform_bootstrap,
@@ -206,7 +224,9 @@ static const struct arm_platform tegra124_platform = {
 };
 
 ARM_PLATFORM(tegra124, "nvidia,tegra124", &tegra124_platform);
+#endif
 
+#ifdef SOC_TEGRA210
 static const struct arm_platform tegra210_platform = {
 	.devmap = tegra_platform_devmap,
 	.bootstrap = tegra210_platform_bootstrap,
@@ -219,3 +239,4 @@ static const struct arm_platform tegra210_platform = {
 };
 
 ARM_PLATFORM(tegra210, "nvidia,tegra210", &tegra210_platform);
+#endif

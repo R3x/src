@@ -27,7 +27,7 @@
  *	i4b_ipr.c - isdn4bsd IP over raw HDLC ISDN network driver
  *	---------------------------------------------------------
  *
- *	$Id: i4b_ipr.c,v 1.42 2017/03/28 08:47:19 ozaki-r Exp $
+ *	$Id: i4b_ipr.c,v 1.45 2018/06/26 06:48:03 msaitoh Exp $
  *
  * $FreeBSD$
  *
@@ -59,7 +59,7 @@
  *---------------------------------------------------------------------------*/
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: i4b_ipr.c,v 1.42 2017/03/28 08:47:19 ozaki-r Exp $");
+__KERNEL_RCSID(0, "$NetBSD: i4b_ipr.c,v 1.45 2018/06/26 06:48:03 msaitoh Exp $");
 
 #include "irip.h"
 #include "opt_irip.h"
@@ -567,7 +567,6 @@ iripioctl(struct ifnet *ifp, u_long cmd, void *data)
 	struct ipr_softc *sc = ifp->if_softc;
 
 	struct ifreq *ifr = (struct ifreq *)data;
-	struct ifaddr *ifa = (struct ifaddr *)data;
 	int s;
 	int error = 0;
 
@@ -578,7 +577,7 @@ iripioctl(struct ifnet *ifp, u_long cmd, void *data)
 		case SIOCAIFADDR:	/* add interface address */
 		case SIOCINITIFADDR:	/* set interface address */
 		case SIOCSIFDSTADDR:	/* set interface destination address */
-			if(ifa->ifa_addr->sa_family != AF_INET)
+			if (ifreq_getaddr(cmd, ifr)->sa_family != AF_INET)
 				error = EAFNOSUPPORT;
 			else
 				sc->sc_if.if_flags |= IFF_UP;
@@ -1125,7 +1124,7 @@ ipr_tx_queue_empty(void *softc)
 			mm.m_len = 4;
 			mm.m_data = (char *)&af;
 
-			bpf_mtap(&sc->sc_if, &mm);
+			bpf_mtap(&sc->sc_if, &mm, BPF_D_OUT);
 		}
 #endif /* NBPFILTER */
 

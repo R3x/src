@@ -1,4 +1,4 @@
-#	$NetBSD: XEN3_DOM0,v 1.127 2018/02/17 01:34:45 sevan Exp $
+#	$NetBSD: XEN3_DOM0,v 1.129 2018/06/07 13:36:29 thorpej Exp $
 #
 #	XEN3_0: Xen 3.0 domain0 kernel
 

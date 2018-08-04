@@ -1,4 +1,4 @@
-/*	$NetBSD: tcp_subr.c,v 1.276 2018/03/29 18:54:48 maxv Exp $	*/
+/*	$NetBSD: tcp_subr.c,v 1.280 2018/05/23 18:40:29 maxv Exp $	*/
 
 /*
  * Copyright (C) 1995, 1996, 1997, and 1998 WIDE Project.
@@ -91,7 +91,7 @@
  */
 
 #include <sys/cdefs.h>
-__KERNEL_RCSID(0, "$NetBSD: tcp_subr.c,v 1.276 2018/03/29 18:54:48 maxv Exp $");
+__KERNEL_RCSID(0, "$NetBSD: tcp_subr.c,v 1.280 2018/05/23 18:40:29 maxv Exp $");
 
 #ifdef _KERNEL_OPT
 #include "opt_inet.h"
@@ -143,11 +143,9 @@ __KERNEL_RCSID(0, "$NetBSD: tcp_subr.c,v 1.276 2018/03/29 18:54:48 maxv Exp $");
 #include <netinet/tcp_vtw.h>
 #include <netinet/tcp_private.h>
 #include <netinet/tcp_congctl.h>
-#include <netinet/tcpip.h>
 
 #ifdef IPSEC
 #include <netipsec/ipsec.h>
-#include <netipsec/xform.h>
 #ifdef INET6
 #include <netipsec/ipsec6.h>
 #endif
@@ -1423,11 +1421,6 @@ tcp6_ctlinput(int cmd, const struct sockaddr *sa, void *d)
 	}
 
 	if (ip6) {
-		/*
-		 * XXX: We assume that when ip6 is non NULL,
-		 * M and OFF are valid.
-		 */
-
 		/* check if we can safely examine src and dst ports */
 		if (m->m_pkthdr.len < off + sizeof(th)) {
 			if (cmd == PRC_MSGSIZE)
@@ -1925,6 +1918,10 @@ tcp_mss_from_peer(struct tcpcb *tp, int offer)
 	if (tp->t_in6pcb)
 		mss -= ip6_optlen(tp->t_in6pcb);
 #endif
+	/*
+	 * XXX XXX What if mss goes negative or zero? This can happen if a
+	 * socket has large IPv6 options. We crash below.
+	 */
 
 	/*
 	 * If there's a pipesize, change the socket buffer to that size.

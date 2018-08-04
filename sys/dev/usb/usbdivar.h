@@ -1,4 +1,4 @@
-/*	$NetBSD: usbdivar.h,v 1.114 2017/01/19 16:05:00 skrll Exp $	*/
+/*	$NetBSD: usbdivar.h,v 1.116 2018/06/29 17:48:24 msaitoh Exp $	*/
 
 /*
  * Copyright (c) 1998, 2012 The NetBSD Foundation, Inc.
@@ -153,7 +153,8 @@ struct usbd_bus {
 #define USBREV_1_1	3
 #define USBREV_2_0	4
 #define USBREV_3_0	5
-#define USBREV_STR { "unknown", "pre 1.0", "1.0", "1.1", "2.0", "3.0" }
+#define USBREV_3_1	6
+#define USBREV_STR { "unknown", "pre 1.0", "1.0", "1.1", "2.0", "3.0", "3.1" }
 
 	const struct usbd_bus_methods
 			       *ub_methods;
@@ -345,7 +346,7 @@ void		usb_needs_explore(struct usbd_device *);
 void		usb_needs_reattach(struct usbd_device *);
 void		usb_schedsoftintr(struct usbd_bus *);
 
-static inline int
+static __inline int
 usbd_xfer_isread(struct usbd_xfer *xfer)
 {
 	if (xfer->ux_rqflags & URQ_REQUEST)
@@ -355,7 +356,7 @@ usbd_xfer_isread(struct usbd_xfer *xfer)
 	   UE_DIR_IN;
 }
 
-static inline size_t
+static __inline size_t
 usb_addr2dindex(int addr)
 {
 

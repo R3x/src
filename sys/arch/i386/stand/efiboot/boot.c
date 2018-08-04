@@ -1,4 +1,4 @@
-/*	$NetBSD: boot.c,v 1.8 2018/03/27 14:15:05 nonaka Exp $	*/
+/*	$NetBSD: boot.c,v 1.10 2018/04/11 10:32:09 nonaka Exp $	*/
 
 /*-
  * Copyright (c) 2016 Kimihiro Nonaka <nonaka@netbsd.org>
@@ -55,7 +55,9 @@ static const char * const names[][2] = {
 #define NUMNAMES	__arraycount(names)
 #define DEFFILENAME	names[0][0]
 
-#define	MAXDEVNAME	16
+#ifndef	EFIBOOTCFG_FILENAME
+#define	EFIBOOTCFG_FILENAME	"esp:/EFI/NetBSD/boot.cfg"
+#endif
 
 void	command_help(char *);
 void	command_quit(char *);
@@ -180,6 +182,21 @@ parsebootfile(const char *fname, char **fsname, char **devname, int *unit,
 }
 
 static char *
+snprint_bootdev(char *buf, size_t bufsize, const char *devname, int unit,
+    int partition)
+{
+	static const char *no_partition_devs[] = { "esp", "net", "nfs", "tftp" };
+	int i;
+
+	for (i = 0; i < __arraycount(no_partition_devs); i++)
+		if (strcmp(devname, no_partition_devs[i]) == 0)
+			break;
+	snprintf(buf, bufsize, "%s%d%c", devname, unit,
+	    i < __arraycount(no_partition_devs) ? '\0' : 'a' + partition);
+	return buf;
+}
+
+static char *
 sprint_bootsel(const char *filename)
 {
 	char *fsname, *devname;
@@ -189,8 +206,8 @@ sprint_bootsel(const char *filename)
 
 	if (parsebootfile(filename, &fsname, &devname, &unit,
 			  &partition, &file) == 0) {
-		snprintf(buf, sizeof(buf), "%s%d%c:%s", devname, unit,
-		    'a' + partition, file);
+		snprintf(buf, sizeof(buf), "%s:%s", snprint_bootdev(buf,
+		    sizeof(buf), devname, unit, partition), file);
 		return buf;
 	}
 	return "(invalid)";
@@ -273,6 +290,12 @@ boot(void)
 	default_filename = DEFFILENAME;
 
 	if (!(boot_params.bp_flags & X86_BP_FLAGS_NOBOOTCONF)) {
+#ifdef EFIBOOTCFG_FILENAME
+		int rv = EINVAL;
+		if (efi_bootdp_type != BOOT_DEVICE_TYPE_NET)
+			rv = parsebootconf(EFIBOOTCFG_FILENAME);
+		if (rv)
+#endif
 		parsebootconf(BOOTCFG_FILENAME);
 	} else {
 		bootcfg_info.timeout = boot_params.bp_timeout;
@@ -415,13 +438,15 @@ void
 command_dev(char *arg)
 {
 	static char savedevname[MAXDEVNAME + 1];
+	char buf[80];
 	char *fsname, *devname;
 	const char *file; /* dummy */
 
 	if (*arg == '\0') {
 		efi_disk_show();
-		printf("default %s%d%c\n", default_devname, default_unit,
-		       'a' + default_partition);
+		efi_net_show();
+		printf("default %s\n", snprint_bootdev(buf, sizeof(buf),
+		    default_devname, default_unit, default_partition));
 		return;
 	}
 

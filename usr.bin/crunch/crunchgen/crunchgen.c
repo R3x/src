@@ -1,4 +1,4 @@
-/*	$NetBSD: crunchgen.c,v 1.85 2017/10/08 15:06:17 christos Exp $	*/
+/*	$NetBSD: crunchgen.c,v 1.87 2018/06/21 10:55:54 kamil Exp $	*/
 /*
  * Copyright (c) 1994 University of Maryland
  * All Rights Reserved.
@@ -38,7 +38,7 @@
 
 #include <sys/cdefs.h>
 #if !defined(lint)
-__RCSID("$NetBSD: crunchgen.c,v 1.85 2017/10/08 15:06:17 christos Exp $");
+__RCSID("$NetBSD: crunchgen.c,v 1.87 2018/06/21 10:55:54 kamil Exp $");
 #endif
 
 #include <stdlib.h>
@@ -55,7 +55,7 @@ __RCSID("$NetBSD: crunchgen.c,v 1.85 2017/10/08 15:06:17 christos Exp $");
 #include <sys/param.h>
 #include <sys/utsname.h>
 
-#define CRUNCH_VERSION	"20050208"
+#define CRUNCH_VERSION	"20180508"
 
 #define MAXLINELEN	16384
 #define MAXFIELDS 	 2048
@@ -102,7 +102,7 @@ static int goterror = 0;
 
 static const char *pname = "crunchgen";
 
-static int verbose, readcache, useobjs, oneobj, pie;	/* options */
+static int verbose, readcache, useobjs, oneobj, pie, sanitizer;	/* options */
 static int reading_cache;
 static char *machine;
 static char *makeobjdirprefix;
@@ -157,13 +157,14 @@ main(int argc, char **argv)
     if (argc > 0)
 	pname = argv[0];
 
-    while ((optc = getopt(argc, argv, "m:c:d:e:fopqD:L:Ov:")) != -1) {
+    while ((optc = getopt(argc, argv, "m:c:d:e:fopqsD:L:Ov:")) != -1) {
 	switch(optc) {
 	case 'f':	readcache = 0; break;
 	case 'p':	pie = 1; break;
 	case 'q':	verbose = 0; break;
 	case 'O':	oneobj = 0; break;
 	case 'o':       useobjs = 1, oneobj = 0; break;
+	case 's':       sanitizer = 1; break;
 
 	case 'm':	(void)estrlcpy(outmkname, optarg, sizeof(outmkname)); break;
 	case 'c':	(void)estrlcpy(outcfname, optarg, sizeof(outcfname)); break;
@@ -907,8 +908,8 @@ dir_search(char *progname)
     strlst_t *dir;
 
     for (dir=srcdirs; dir != NULL; dir=dir->next) {
-	(void)snprintf(path, sizeof(path), "%s/%s", dir->str, progname);
-	if (is_dir(path))
+	snprintf(path, sizeof(path), "%s/%s/Makefile", dir->str, progname);
+	if (is_nonempty_file(path))
 	    return dir->str;
     }
     return NULL;
@@ -922,6 +923,8 @@ top_makefile_rules(FILE *outmk)
 
     if (!pie)
 	    fprintf(outmk, "NOPIE=\n");
+    if (!sanitizer)
+	    fprintf(outmk, "NOSANITIZER=\n");
     fprintf(outmk, "NOMAN=\n\n");
 
     fprintf(outmk, "DBG=%s\n", dbg);
@@ -1017,7 +1020,7 @@ prog_makefile_rules(FILE *outmk, prog_t *p)
 	for (lst = vars; lst != NULL; lst = lst->next)
 	    fprintf(outmk, "%s\\n", lst->str);
 	fprintf(outmk, "'\\\n");
-	fprintf(outmk, MAKECMD);
+	fprintf(outmk, MAKECMD "%s ", sanitizer ? "" : "NOSANITIZER=");
 	if (p->objs)
 	    fprintf(outmk, "${%s_OBJS} ) \n\n", p->ident);
 	else

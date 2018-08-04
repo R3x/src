@@ -1,4 +1,4 @@
-# $NetBSD: LOONGSON,v 1.36 2018/01/18 23:17:09 maya Exp $
+# $NetBSD: LOONGSON,v 1.38 2018/06/07 13:36:29 thorpej Exp $
 #
 # LOONGSON machine description file
 # 
@@ -22,7 +22,7 @@ include 	"arch/evbmips/conf/std.loongson"
 
 options 	INCLUDE_CONFIG_FILE	# embed config file in kernel binary
 
-#ident 		"LOONGSON-$Revision: 1.36 $"
+#ident 		"LOONGSON-$Revision: 1.38 $"
 
 maxusers	16
 

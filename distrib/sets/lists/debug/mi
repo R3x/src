@@ -1,4 +1,4 @@
-# $NetBSD: mi,v 1.245 2018/03/14 02:13:47 kamil Exp $
+# $NetBSD: mi,v 1.256 2018/06/29 12:34:14 roy Exp $
 ./etc/mtree/set.debug                           comp-sys-root
 ./usr/lib					comp-sys-usr		compatdir
 ./usr/lib/i18n/libBIG5_g.a			comp-c-debuglib		debuglib,compatfile
@@ -34,6 +34,7 @@
 ./usr/lib/libbind9_g.a				comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libblacklist_g.a			comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libbluetooth_g.a			comp-c-debuglib		debuglib,compatfile
+./usr/lib/libbozohttpd_g.a			comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libbsdmalloc_g.a			comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libbz2_g.a				comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libc++_g.a				comp-c-debuglib		debuglib,compatfile,libcxx
@@ -94,6 +95,7 @@
 ./usr/lib/liblber_g.a				comp-c-debuglib		debuglib,ldap,compatfile
 ./usr/lib/libldap_g.a				comp-c-debuglib		debuglib,ldap,compatfile
 ./usr/lib/libldap_r_g.a				comp-c-debuglib		debuglib,ldap,compatfile
+./usr/lib/liblsan_g.a				comp-c-debuglib		debuglib,compatfile,gcc
 ./usr/lib/liblua_g.a				comp-c-debuglib		debuglib,compatfile
 ./usr/lib/liblwres_g.a				comp-c-debuglib		debuglib,compatfile
 ./usr/lib/liblzf_g.a				comp-c-debuglib		debuglib,compatfile
@@ -265,6 +267,7 @@
 ./usr/lib/liby_g.a				comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libz_g.a				comp-c-debuglib		debuglib,compatfile
 ./usr/lib/libzfs_g.a				comp-c-debuglib		debuglib,compatfile,zfs
+./usr/lib/libzfs_core_g.a			comp-c-debuglib		debuglib,compatfile,zfs
 ./usr/lib/libzpool_g.a				comp-c-debuglib		debuglib,compatfile,zfs
 ./usr/libdata/debug/bin/cat.debug		comp-util-debug		debug
 ./usr/libdata/debug/bin/chio.debug		comp-util-debug		debug
@@ -317,7 +320,7 @@
 ./usr/libdata/debug/sbin/chown.debug		comp-sysutil-debug	debug
 ./usr/libdata/debug/sbin/clri.debug		comp-sysutil-debug	debug
 ./usr/libdata/debug/sbin/devpubd.debug		comp-sysutil-debug	debug
-./usr/libdata/debug/sbin/dhclient.debug		comp-dhclient-debug	debug
+./usr/libdata/debug/sbin/dhclient.debug		comp-obsolete		obsolete
 ./usr/libdata/debug/sbin/dhcpcd.debug		comp-dhcpcd-debug	debug
 ./usr/libdata/debug/sbin/disklabel.debug	comp-sysutil-debug	debug
 ./usr/libdata/debug/sbin/dkctl.debug		comp-sysutil-debug	debug
@@ -1751,7 +1754,7 @@
 ./usr/libdata/debug/usr/tests/kernel/t_timeleft.debug			tests-kernel-tests	debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/kernel/t_ucontext.debug			tests-obsolete		obsolete,compattestfile
 ./usr/libdata/debug/usr/tests/kernel/t_writev.debug			tests-obsolete		obsolete,compattestfile
-./usr/libdata/debug/usr/tests/kernel/t_zombie.debug			tests-kernel-tests	debug,atf,rump
+./usr/libdata/debug/usr/tests/kernel/t_zombie.debug			tests-kernel-tests	debug,atf
 ./usr/libdata/debug/usr/tests/kernel/tty/t_pr.debug			tests-kernel-tests	debug,atf,rump
 ./usr/libdata/debug/usr/tests/kyua-cli/bootstrap/atf_helpers.debug			tests-kyua-tests	debug,atf,kyua,compattestfile
 ./usr/libdata/debug/usr/tests/kyua-cli/bootstrap/plain_helpers.debug			tests-kyua-tests	debug,atf,kyua,compattestfile
@@ -2073,6 +2076,7 @@
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_connect.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_context.debug		tests-obsolete		obsolete,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_dup.debug			tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/sys/t_fork.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_fsync.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_getcontext.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_getgroups.debug		tests-lib-debug		debug,atf,compattestfile
@@ -2128,11 +2132,13 @@
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_socketpair.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_stat.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_swapcontext.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/sys/t_syscall.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_timer_create.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_truncate.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_ucontext.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_umask.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_unlink.debug		tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libc/sys/t_vfork.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_wait.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_wait_noproc.debug		tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libc/sys/t_wait_noproc_wnohang.debug	tests-lib-debug		debug,atf,compattestfile
@@ -2170,6 +2176,7 @@
 ./usr/libdata/debug/usr/tests/lib/libm/t_acos.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_asin.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_atan.debug			tests-lib-debug		debug,atf,compattestfile
+./usr/libdata/debug/usr/tests/lib/libm/t_cabsl.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_casinh.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_cbrt.debug			tests-lib-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/lib/libm/t_ceil.debug			tests-lib-debug		debug,atf,compattestfile
@@ -2290,6 +2297,7 @@
 ./usr/libdata/debug/usr/tests/net/if/ifconf.debug		tests-net-debug		debug,atf,rump
 ./usr/libdata/debug/usr/tests/net/if/t_compat.debug		tests-net-debug		debug,atf,rump
 ./usr/libdata/debug/usr/tests/net/if_loop/t_pr.debug		tests-net-debug		debug,atf,rump
+./usr/libdata/debug/usr/tests/net/if_vlan/siocXmulti.debug	tests-net-debug		debug,atf,rump
 ./usr/libdata/debug/usr/tests/net/in_cksum/in_cksum.debug	tests-net-debug		debug,atf,compattestfile
 ./usr/libdata/debug/usr/tests/net/ipsec/natt_terminator.debug	tests-net-debug		debug,atf,rump
 ./usr/libdata/debug/usr/tests/net/mcast/mcast.debug		tests-net-debug		debug,atf,rump
