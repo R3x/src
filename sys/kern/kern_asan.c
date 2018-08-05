@@ -110,6 +110,14 @@ void __read_once_size_nocheck(void *p, void *res, int size)
 #define VM_KASAN 100 //temp
 
 
+/* Function declarations for KASAN Functions  */
+void kasan_check_read(const volatile void *, unsigned int);
+void * task_stack_page(struct lwp * );
+void kasan_check_write(const volatile void *, unsigned int);
+
+
+/* End of Function declarations for KASAN Functions */
+
 /*
 void kasan_enable_current(void)
 {
@@ -168,7 +176,6 @@ void * nearest_obj(struct pool_cache *cache, struct page *Page, void *obj)
 /*
  * Start of NetBSD kernel alternatives
  */
-void * task_stack_page(struct lwp * );
 /*
  * Used to return the page mapping the stack of a lwp
  */
@@ -319,11 +326,12 @@ memory_is_poisoned_16(unsigned long addr)
 	return *shadow_addr;
 }
 
-/* Function to make sure that a set of bytes is not zero */
+/* Function to check whether a set of bytes is not zero */
 static __always_inline unsigned long
 bytes_is_nonzero(const u8 *start, size_t size)
 {
 	while (size) {
+                /* If the byte is not zero return the value */
 		if (__predict_false(*start))
 			return (unsigned long)start;
 		start++;
@@ -382,15 +390,19 @@ static __always_inline bool
 memory_is_poisoned_n(unsigned long addr, size_t size)
 {
 	unsigned long ret;
-    
+   
+        /* Check if the memory region is non zero  */
 	ret = memory_is_nonzero(kasan_mem_to_shadow((void *)addr),
 			(char *)kasan_mem_to_shadow((void *)(addr 
                                 + size - 1)) + 1);
 
+        /* If the memory seems to be poisoned (non zero) */
 	if (__predict_false(ret)) {
+                /* take the last byte and its corresponding shadow offset */
 		unsigned long last_byte = addr + size - 1;
 		s8 *last_shadow = (s8 *)kasan_mem_to_shadow((void *)last_byte);
 
+                /* if */
 		if (__predict_false(ret != (unsigned long)last_shadow ||
 			((long)(last_byte & KASAN_SHADOW_MASK) 
                          >= *last_shadow)))
@@ -399,6 +411,10 @@ memory_is_poisoned_n(unsigned long addr, size_t size)
 	return false;
 }
 
+/* 
+ * Function to decide and call the corresponding function to check the 
+ * poisoning based on the size that was given 
+ */
 static __always_inline bool
 memory_is_poisoned(unsigned long addr, size_t size)
 {
@@ -420,6 +436,10 @@ memory_is_poisoned(unsigned long addr, size_t size)
 	return memory_is_poisoned_n(addr, size);
 }
 
+/*
+ * Inline function used to check whether the given memory access is 
+ * proper. 
+ */
 static __always_inline void
 check_memory_region_inline(unsigned long addr, size_t size, bool write,
 	unsigned long ret_ip)
@@ -428,15 +448,18 @@ check_memory_region_inline(unsigned long addr, size_t size, bool write,
 	if (__predict_false(size == 0))
 		return;
 
+        /* Check if the address is a valid kernel address */
 	if (__predict_false((void *)addr <
 		kasan_shadow_to_mem((void *)KASAN_SHADOW_START))) {
 		kasan_report(addr, size, write, ret_ip);
 		return;
 	}
 
+        /* If the memory is not poisoned then return normally */
 	if (__predict_true(!memory_is_poisoned(addr, size)))
 		return;
 
+        /* Bug found, proceed to report the bug */
 	kasan_report(addr, size, write, ret_ip);
 
 }
@@ -449,14 +472,12 @@ check_memory_region(unsigned long addr, size_t size, bool write,
 	check_memory_region_inline(addr, size, write, ret_ip);
 }
 
-void kasan_check_read(const volatile void *, unsigned int);
 void
 kasan_check_read(const volatile void *p, unsigned int size)
 {
 	check_memory_region((unsigned long)p, size, false, _RET_IP_);
 }
 
-void kasan_check_write(const volatile void *, unsigned int);
 void
 kasan_check_write(const volatile void *p, unsigned int size)
 {
@@ -490,6 +511,10 @@ void *memcpy(void *dest, const void *src, size_t len)
 }
 */
 
+/*
+ * Function to unpoison the shadow offset of a page which is being allocated
+ * only if it is not a Highmem page (Not applicable for amd64)
+ */
 void
 kasan_alloc_pages(struct page *page, unsigned int order)
 {
@@ -497,13 +522,16 @@ kasan_alloc_pages(struct page *page, unsigned int order)
 		kasan_unpoison_shadow(page_address(page), PAGE_SIZE << order);
 }
 
+/*
+ * Function to poison the shadow offset of a page which is being freed 
+ * only if it is not a Highmem page (Not applicable for amd64)
+ */
 void
 kasan_free_pages(struct page *page, unsigned int order)
 {
 	if (__predict_true(!PageHighMem(page)))
-		kasan_poison_shadow(page_address(page),
-				PAGE_SIZE << order,
-				KASAN_FREE_PAGE);
+		kasan_poison_shadow(page_address(page), PAGE_SIZE << order,
+		    KASAN_FREE_PAGE);
 }
 
 /*
@@ -523,6 +551,11 @@ optimal_redzone(unsigned int object_size)
 		object_size <= (1 << 16) - 1024 ? 1024 : 2048;
 }
 
+/*
+ * Function to initialize the kasan_info struct inside the pool_cache
+ * struct used by kmem(8) and pool_cache(8) allocators with the details of
+ * the allocation.
+ */
 void
 kasan_cache_create(struct pool_cache *cache, size_t *size,
 			unsigned int *flags)
@@ -563,6 +596,13 @@ kasan_cache_create(struct pool_cache *cache, size_t *size,
 
 	*flags |= SLAB_KASAN;
 }
+
+/*
+ * Functions to be called by the Pagedaemon since there are no shrink and
+ * shutdown functions in the cache allocator. Will add after the quarantine
+ * list feature is ready
+ */
+
 /*
 void
 kasan_cache_shrink(struct pool_cache *cache)
@@ -577,6 +617,11 @@ kasan_cache_shutdown(struct pool_cache *cache)
 		quarantine_remove_cache(cache);
 }
 */
+
+/* 
+ * Function to return the total size of the alloc and free meta structure
+ * Returns 0 if the structres don't exist 
+ */
 size_t
 kasan_metadata_size(struct pool_cache *cache)
 {
@@ -586,6 +631,9 @@ kasan_metadata_size(struct pool_cache *cache)
 		sizeof(struct kasan_free_meta) : 0);
 }
 
+/*
+ * Function to poison a pool of cache memory. The function needs renaming.
+ */
 void
 kasan_poison_slab(struct page *page)
 {
@@ -594,12 +642,20 @@ kasan_poison_slab(struct page *page)
 			KASAN_KMALLOC_REDZONE);
 }
 
+/* 
+ * Function to unpoison a object of memory that is allocated by the allocator -
+ * in this case the pool_cache or the kmem allocator
+ */
 void
 kasan_unpoison_object_data(struct pool_cache *cache, void *object)
 {
 	kasan_unpoison_shadow(object, cache->pc_reqsize);
 }
 
+/* 
+ * Function to poison a object of memory that is allocated by the allocator -
+ * in this case the pool_cache or the kmem allocator
+ */
 void 
 kasan_poison_object_data(struct pool_cache *cache, void *object)
 {
@@ -608,6 +664,9 @@ kasan_poison_object_data(struct pool_cache *cache, void *object)
 			KASAN_KMALLOC_REDZONE);
 }
 
+/*
+ * Set of Functions to handle irq stacks - will be ported later
+ */
 /*
 static inline int 
 in_irqentry_text(unsigned long ptr)
@@ -652,8 +711,9 @@ save_stack(unsigned int flags)
 
 	return depot_save_stack(&trace, flags);
 }
-
 */
+
+/* Function to set the pid and stack in the kasan_track structure */
 static inline void 
 set_track(struct kasan_track *track, unsigned int flags)
 {
@@ -665,22 +725,24 @@ set_track(struct kasan_track *track, unsigned int flags)
  */
 }
 
+/* 
+ * Function to retrieve the structure which contains the details of the 
+ * allocation.
+ */
 struct kasan_alloc_meta 
-*get_alloc_info(struct pool_cache *cache,
-					const void *object)
+*get_alloc_info(struct pool_cache *cache, const void *object)
 {
-//	BUILD_BUG_ON(sizeof(struct kasan_alloc_meta) > 32);
-//	return (const void *)((const char *)object + cache->kasan_info.alloc_meta_offset);
-        return (void *)0;
+	KASSERT(sizeof(struct kasan_alloc_meta) > 32);
+	return (struct kasan_alloc_meta *)((const char *)object + 
+                cache->kasan_info.alloc_meta_offset);
 }
 
 struct kasan_free_meta 
-*get_free_info(struct pool_cache *cache,
-				      const void *object)
+*get_free_info(struct pool_cache *cache, const void *object)
 {
-//	BUILD_BUG_ON(sizeof(struct kasan_free_meta) > 32);
-//	return (const void *)((const char *)object + cache->kasan_info.free_meta_offset);
-        return (void *)0;
+	KASSERT(sizeof(struct kasan_free_meta) > 32);
+	return (const void *)((const char *)object + 
+                cache->kasan_info.free_meta_offset);
 }
 
 void 
