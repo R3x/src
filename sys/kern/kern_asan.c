@@ -726,30 +726,39 @@ set_track(struct kasan_track *track, unsigned int flags)
 }
 
 /* 
- * Function to retrieve the structure which contains the details of the 
+ * Function to rerieve address of the structure which contains the details of
  * allocation.
  */
 struct kasan_alloc_meta 
 *get_alloc_info(struct pool_cache *cache, const void *object)
 {
 	KASSERT(sizeof(struct kasan_alloc_meta) > 32);
-	return (struct kasan_alloc_meta *)((const char *)object + 
+	return (void *)((char *)__UNCONST(object) +
                 cache->kasan_info.alloc_meta_offset);
 }
 
+/* 
+ * Function to rerieve address of the structure which contains the details of
+ * the memory which was freed.
+ */
 struct kasan_free_meta 
 *get_free_info(struct pool_cache *cache, const void *object)
 {
 	KASSERT(sizeof(struct kasan_free_meta) > 32);
-	return (const void *)((const char *)object + 
+	return (void *)((char *)__UNCONST(object) + 
                 cache->kasan_info.free_meta_offset);
 }
 
+/*
+ * Function allocates a structure of alloc info in the address pointed by the
+ * get_alloc_info function. Requires renaming and possible flag change.
+ */
 void 
 kasan_init_slab_obj(struct pool_cache *cache, const void *object)
 {
 	struct kasan_alloc_meta *alloc_info;
 
+        /* If the cache already has a alloc info struct? */
 	if (!(cache->pc_pool.pr_flags & SLAB_KASAN))
 		return;
 
@@ -757,6 +766,7 @@ kasan_init_slab_obj(struct pool_cache *cache, const void *object)
 	__builtin_memset(alloc_info, 0, sizeof(*alloc_info));
 }
 
+/* Allocate a */
 void 
 kasan_slab_alloc(struct pool_cache *cache, void *object, unsigned int flags)
 {
@@ -765,13 +775,17 @@ kasan_slab_alloc(struct pool_cache *cache, void *object, unsigned int flags)
 
 static bool 
 __kasan_slab_free(struct pool_cache *cache, void *object,
-			      unsigned long ip, bool quarantine)
+    unsigned long ip, bool quarantine)
 {
 	s8 shadow_byte;
 	unsigned long rounded_up_size;
 
-	if (__predict_false(nearest_obj(cache, virt_to_head_page(object), object) !=
-	    object)) {
+        /* 
+         * Check if it was a invalid free by checking whether the object was 
+         * a part of the cache. Will need to rethink this.
+         */
+	if (__predict_false(nearest_obj(cache, virt_to_head_page(object), 
+            object) !=object)) {
 //		kasan_report_invalid_free(object, ip);
 		return true;
 	}
@@ -780,29 +794,45 @@ __kasan_slab_free(struct pool_cache *cache, void *object,
 	if (__predict_false(cache->pc_pool.pr_flags & SLAB_TYPESAFE_BY_RCU))
 		return false;
 
+        /*
+         * If the memory wasn't posioned then it means that it is a invalid
+         * free of memory since the memory has never been allocated.
+         */
 	shadow_byte = READ_ONCE(*(s8 *)kasan_mem_to_shadow(object));
 	if (shadow_byte < 0 || shadow_byte >= KASAN_SHADOW_SCALE_SIZE) {
 //		kasan_report_invalid_free(object, ip);
 		return true;
 	}
-
+        
+        /*
+         * Poison the object since it is not usable anymore as it has been
+         * freed. Poison is done according to the size rounded up to the kasan
+         * scale (2 << 8)
+         */
 	rounded_up_size = round_up(cache->pc_reqsize, KASAN_SHADOW_SCALE_SIZE);
 	kasan_poison_shadow(object, rounded_up_size, KASAN_KMALLOC_FREE);
 
-	if (!quarantine || __predict_false(!(cache->pc_pool.pr_flags & SLAB_KASAN)))
+	if (!quarantine || __predict_false(!(cache->pc_pool.pr_flags & 
+            SLAB_KASAN)))
 		return false;
 
-	set_track(&get_alloc_info(cache, object)->free_track, GFP_NOWAIT);
+	/*
+         * Set the kasan_track structure and proceed to put the object in the
+         * quarantine list.
+         */
+        set_track(&get_alloc_info(cache, object)->free_track, GFP_NOWAIT);
 //	quarantine_put(get_free_info(cache, object), cache);
 	return true;
 }
 
+/* Wrapper function for slab free - subject to change*/
 bool 
 kasan_slab_free(struct pool_cache *cache, void *object, unsigned long ip)
 {
 	return __kasan_slab_free(cache, object, ip, true);
 }
 
+/* Kasan implementation of kmalloc */
 void 
 kasan_kmalloc(struct pool_cache *cache, const void *object, size_t size,
 		   unsigned int flags)
@@ -816,19 +846,27 @@ kasan_kmalloc(struct pool_cache *cache, const void *object, size_t size,
 	if (__predict_false(object == NULL))
 		return;
 
+        /* Caluclate redzone to catch oveflows */
 	redzone_start = round_up(((unsigned long)object + size),
 				KASAN_SHADOW_SCALE_SIZE);
 	redzone_end = round_up((unsigned long)object + cache->pc_reqsize,
 				KASAN_SHADOW_SCALE_SIZE);
 
+        /* Unpoison the memory of the object and posion the redzone region */
 	kasan_unpoison_shadow(object, size);
 	kasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start,
 		KASAN_KMALLOC_REDZONE);
 
+        /* Need to reimplement the flag here */
 	if (cache->pc_pool.pr_flags & SLAB_KASAN)
 		set_track(&get_alloc_info(cache, object)->alloc_track, flags);
 }
 
+/*
+ * kmalloc for large allocations - Might need to rethink this since the pool
+ * cache allocator seems to go for a direct allocation with the pool allocator
+ * for large memories. 
+ */
 void 
 kasan_kmalloc_large(const void *ptr, size_t size, unsigned int flags)
 {
@@ -842,16 +880,19 @@ kasan_kmalloc_large(const void *ptr, size_t size, unsigned int flags)
 	if (__predict_false(ptr == NULL))
 		return;
 
+        /* Calculate the redzone offsets to catch overflows */
 	page = virt_to_page(ptr);
 	redzone_start = round_up(((unsigned long)ptr + size),
 				KASAN_SHADOW_SCALE_SIZE);
 	redzone_end = (unsigned long)ptr + (PAGE_SIZE << compound_order(page));
 
+        /* Unpoison the object and poison the redzone */
 	kasan_unpoison_shadow(ptr, size);
 	kasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start,
 		KASAN_PAGE_REDZONE);
 }
 
+/* kasan implementation of krealloc */
 void 
 kasan_krealloc(const void *object, size_t size, unsigned int flags)
 {
@@ -862,12 +903,17 @@ kasan_krealloc(const void *object, size_t size, unsigned int flags)
 
 	page = virt_to_head_page(object);
 
+        /* Need to decide when to call kmalloc and kmalloc large */
 	if (__predict_false(!PageSlab(page)))
 		kasan_kmalloc_large(object, size, flags);
 //	else
 //		kasan_kmalloc(page->slab_cache, object, size, flags);
 }
 
+/* 
+ * NetBSD alternative - free has been deprecited and made a wrapper around
+ * kmem_free. Will remove if no functions need this.
+ */
 void 
 kasan_poison_kfree(void *ptr, unsigned long ip)
 {
@@ -887,6 +933,10 @@ kasan_poison_kfree(void *ptr, unsigned long ip)
 	}
 }
 
+/* 
+ * NetBSD alternative - free has been deprecited and made a wrapper around
+ * kmem_free. Will remove if no functions need this.
+ */
 void 
 kasan_kfree_large(void *ptr, unsigned long ip)
 {
@@ -896,7 +946,8 @@ kasan_kfree_large(void *ptr, unsigned long ip)
 	/* The object will be poisoned by page_alloc. */
 
 }
-/* Module stuff later
+
+/* Module part will be dealt with later
 int kasan_module_alloc(void *addr, size_t size)
 {
 	void *ret;
@@ -926,6 +977,7 @@ int kasan_module_alloc(void *addr, size_t size)
 }
 */
 
+/* TODO */
 void 
 kasan_free_shadow(const struct vm_struct *vm)
 {
@@ -935,11 +987,13 @@ kasan_free_shadow(const struct vm_struct *vm)
 */
 }
 
+/* */
 static void 
 register_global(struct kasan_global *global)
 {
 	size_t aligned_size = round_up(global->size, KASAN_SHADOW_SCALE_SIZE);
 
+        /* unposion the global area */
 	kasan_unpoison_shadow(global->beg, global->size);
 
 	kasan_poison_shadow((void *)((uintptr_t)global->beg + aligned_size),
