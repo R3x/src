@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
+//#define DISABLE_BRANCH_PROFILING
+//#define pr_fmt(fmt) "kasan: " fmt
+
 #include <sys/cdefs.h>
 __KERNEL_RCSID(0, "$NetBSD$");
 
@@ -12,230 +16,144 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <sys/systm.h>
 #include <sys/types.h>
 #include <sys/filedesc.h>
+#include <sys/proc.h>
 
 #include <sys/kasan.h>
+#include <uvm/uvm.h>
+#include <amd64/pmap.h>
+#include <amd64/vmparam.h>
 
-/*
- *  Linux definitions
- */
-#define IS_ALIGNED(x, a)(((x) & ((typeof(x))(a) - 1)) == 0)
-#define PGDIR_SHIFT 39
-#define PTRS_PER_PGD 512
-// Need to reconfirm these
 
-/*
- * the pgd page can be thought of an array like this: pgd_t[PTRS_PER_PGD]
- *
- * this macro returns the index of the entry in the pgd page which would
- * control the given virtual address
- */
-#define pgd_index(address) (((address) >> PGDIR_SHIFT) & (PTRS_PER_PGD - 1))
+struct seg_details {
+        unsigned long vaddr;
+        unsigned long size;
+};
 
-/*
- * pgd_offset() returns a (pgd_t *)
- * pgd_index() is used get the offset into the pgd page's array of pgd_t's;
- */
-#define pgd_offset_pgd(pgd, address) (pgd + pgd_index((address)))
-/*
- * a shortcut to get a pgd_t in a given mm
- */
-#define pgd_offset(mm, address) pgd_offset_pgd((mm)->pgd, (address))
-/*
- * a shortcut which implies the use of the kernel's pgd, instead
- * of a process's
- */
-#define pgd_offset_k(address) pgd_offset(&init_mm, (address))
+static struct seg_details kmap[4];
 
-/*
- * End of Linux Definitions
- */
+void DumpSegments(void);
+extern struct bootspace bootspace;
 
-/*
- * Function definitions - need to move this somewhere
- */
-
-void kasan_populate_zero_shadow(const void *, const void *);
-
-/*
- * End of Function definitions
- */
-
-/*
- * This page serves two purposes:
- *   - It used as early shadow memory. The entire shadow region populated
- *     with this page, before we will be able to setup normal shadow memory.
- *   - Latter it reused it as zero shadow to cover large ranges of memory
- *     that allowed to access, but not handled by kasan (vmalloc/vmemmap ...).
- */
-/*
-unsigned char kasan_zero_page[PAGE_SIZE] __page_aligned_bss;
-
-#if CONFIG_PGTABLE_LEVELS > 4
-p4d_t kasan_zero_p4d[MAX_PTRS_PER_P4D] __page_aligned_bss;
-#endif
-#if CONFIG_PGTABLE_LEVELS > 3
-pud_t kasan_zero_pud[PTRS_PER_PUD] __page_aligned_bss;
-#endif
-#if CONFIG_PGTABLE_LEVELS > 2
-pmd_t kasan_zero_pmd[PTRS_PER_PMD] __page_aligned_bss;
-#endif
-pte_t kasan_zero_pte[PTRS_PER_PTE] __page_aligned_bss;
-
-static __init void *early_alloc(size_t size, int node)
+void
+DumpSegments(void)
 {
-	return memblock_virt_alloc_try_nid(size, size, __pa(MAX_DMA_ADDRESS),
-					BOOTMEM_ALLOC_ACCESSIBLE, node);
-}
+	size_t i;
 
-static void __init zero_pte_populate(pmd_t *pmd, unsigned long addr,
-				unsigned long end)
-{
-	pte_t *pte = pte_offset_kernel(pmd, addr);
-	pte_t zero_pte;
-
-	zero_pte = pfn_pte(PFN_DOWN(__pa_symbol(kasan_zero_page)), PAGE_KERNEL);
-	zero_pte = pte_wrprotect(zero_pte);
-
-	while (addr + PAGE_SIZE <= end) {
-		set_pte_at(&init_mm, addr, pte, zero_pte);
-		addr += PAGE_SIZE;
-		pte = pte_offset_kernel(pmd, addr);
+        /*
+         * Copy the addresses and sizes of the various regions in the 
+         * bootspace structure into our kernel structure
+         */
+	for (i = 0; i < BTSPACE_NSEGS; i++) {
+		if (bootspace.segs[i].type == BTSEG_NONE) {
+			continue;
+		}
+	        kmap[bootspace.segs[i].type].vaddr = bootspace.segs[i].va;
+                kmap[bootspace.segs[i].type].size = bootspace.segs[i].sz;
 	}
 }
 
-static void __init zero_pmd_populate(pud_t *pud, unsigned long addr,
-				unsigned long end)
-{
-	pmd_t *pmd = pmd_offset(pud, addr);
-	unsigned long next;
+unsigned long text_start;
+unsigned long text_end;
 
-	do {
-		next = pmd_addr_end(addr, end);
+/* Need to get a different offset */
+#define CPU_ENTRY_AREA_BASE 0xff0000 //temp value
+#define CPU_ENTRY_AREA_END 0xff0000 //temp value
+#define MAX_BITS 46
+#define MAX_MEM (1UL << MAX_BITS)
 
-		if (IS_ALIGNED(addr, PMD_SIZE) && end - addr >= PMD_SIZE) {
-			pmd_populate_kernel(&init_mm, pmd, lm_alias(kasan_zero_pte));
-			continue;
-		}
 
-		if (pmd_none(*pmd)) {
-			pmd_populate_kernel(&init_mm, pmd,
-					early_alloc(PAGE_SIZE, NUMA_NO_NODE));
-		}
-		zero_pte_populate(pmd, addr, next);
-	} while (pmd++, addr = next, addr != end);
-}
-
-static void __init zero_pud_populate(p4d_t *p4d, unsigned long addr,
-				unsigned long end)
-{
-	pud_t *pud = pud_offset(p4d, addr);
-	unsigned long next;
-
-	do {
-		next = pud_addr_end(addr, end);
-		if (IS_ALIGNED(addr, PUD_SIZE) && end - addr >= PUD_SIZE) {
-			pmd_t *pmd;
-
-			pud_populate(&init_mm, pud, lm_alias(kasan_zero_pmd));
-			pmd = pmd_offset(pud, addr);
-			pmd_populate_kernel(&init_mm, pmd, lm_alias(kasan_zero_pte));
-			continue;
-		}
-
-		if (pud_none(*pud)) {
-			pud_populate(&init_mm, pud,
-				early_alloc(PAGE_SIZE, NUMA_NO_NODE));
-		}
-		zero_pmd_populate(pud, addr, next);
-	} while (pud++, addr = next, addr != end);
-}
-
-static void __init zero_p4d_populate(pgd_t *pgd, unsigned long addr,
-				unsigned long end)
-{
-	p4d_t *p4d = p4d_offset(pgd, addr);
-	unsigned long next;
-
-	do {
-		next = p4d_addr_end(addr, end);
-		if (IS_ALIGNED(addr, P4D_SIZE) && end - addr >= P4D_SIZE) {
-			pud_t *pud;
-			pmd_t *pmd;
-
-			p4d_populate(&init_mm, p4d, lm_alias(kasan_zero_pud));
-			pud = pud_offset(p4d, addr);
-			pud_populate(&init_mm, pud, lm_alias(kasan_zero_pmd));
-			pmd = pmd_offset(pud, addr);
-			pmd_populate_kernel(&init_mm, pmd,
-						lm_alias(kasan_zero_pte));
-			continue;
-		}
-
-		if (p4d_none(*p4d)) {
-			p4d_populate(&init_mm, p4d,
-				early_alloc(PAGE_SIZE, NUMA_NO_NODE));
-		}
-		zero_pud_populate(p4d, addr, next);
-	} while (p4d++, addr = next, addr != end);
-}
-*/
-/**
- * kasan_populate_zero_shadow - populate shadow memory region with
- *                               kasan_zero_page
- * @shadow_start - start of the memory range to populate
- * @shadow_end   - end of the memory range to populate
+/*
+ *  
  */
-
-void kasan_populate_zero_shadow(const void *shadow_start,
-				const void *shadow_end)
+void
+kasan_early_init(void)
 {
-/*	unsigned long addr = (unsigned long)shadow_start;
-	unsigned long end = (unsigned long)shadow_end;
-	pgd_t *pgd = pgd_offset_k(addr);
-	unsigned long next;
+    return ;
+}
 
-	do {
-		next = pgd_addr_end(addr, end);
+/* 
+ * kasan_init is supposed to be called after the pmap(9) and uvm(9) bootstraps
+ * are done - since we have opted to uses high level allocator function -
+ * uvm_km_alloc to get the shadow region mapped. This is done with the idea
+ * that the area we are allocating is a unused hole.
+ */
+void
+kasan_init(void)
+{
+        struct pmap *kernmap;
+        struct vm_map shadow_map;
+        // void *shadow_begin, *shadow_end;
 
-		if (IS_ALIGNED(addr, PGDIR_SIZE) && end - addr >= PGDIR_SIZE) {
-			p4d_t *p4d;
-			pud_t *pud;
-			pmd_t *pmd;
+        /* clearing page table entries for the shadow region */
+        kernmap = pmap_kernel();
+        pmap_remove(kernmap, KASAN_SHADOW_START, KASAN_SHADOW_END);
+        pmap_update(kernmap);
 
-*/			/*
-			 * kasan_zero_pud should be populated with pmds
-			 * at this moment.
-			 * [pud,pmd]_populate*() below needed only for
-			 * 3,2 - level page tables where we don't have
-			 * puds,pmds, so pgd_populate(), pud_populate()
-			 * is noops.
-			 *
-			 * The ifndef is required to avoid build breakage.
-			 *
-			 * With 5level-fixup.h, pgd_populate() is not nop and
-			 * we reference kasan_zero_p4d. It's not defined
-			 * unless 5-level paging enabled.
-			 *
-			 * The ifndef can be dropped once all KASAN-enabled
-			 * architectures will switch to pgtable-nop4d.h.
-			 */
-/*#ifndef __ARCH_HAS_5LEVEL_HACK
-			pgd_populate(&init_mm, pgd, lm_alias(kasan_zero_p4d));
-#endif
-			p4d = p4d_offset(pgd, addr);
-			p4d_populate(&init_mm, p4d, lm_alias(kasan_zero_pud));
-			pud = pud_offset(p4d, addr);
-			pud_populate(&init_mm, pud, lm_alias(kasan_zero_pmd));
-			pmd = pmd_offset(pud, addr);
-			pmd_populate_kernel(&init_mm, pmd, lm_alias(kasan_zero_pte));
-			continue;
-		}
 
-		if (pgd_none(*pgd)) {
-			pgd_populate(&init_mm, pgd,
-				early_alloc(PAGE_SIZE, NUMA_NO_NODE));
-		}
-		zero_p4d_populate(pgd, addr, next);
-	} while (pgd++, addr = next, addr != end);
-*/
+	/*  Text Section and main shadow offsets */
+	DumpSegments();
+	text_start = kmap[1].vaddr;
+	text_end = kmap[1].vaddr + kmap[1].size;
+
+        /* Initialize the kernel map for the unallocated region
+
+	Alternate way to set up the map. 
+        uvm_map_setup(&shadow_map, (vaddr_t)KASAN_SHADOW_START,
+            (vaddr_t)KASAN_SHADOW_END, VM_MAP_PAGEABLE);
+        shadow_map.pmap = pmap_kernel(); //Not sure about this
+
+         Might need to add a check to see if everything worked properly
+
+	error = uvm_map_prepare(&shadow_map,
+	    kmembase, kmemsize,
+	    NULL, UVM_UNKNOWN_OFFSET, 0,
+	    UVM_MAPFLAG(UVM_PROT_ALL, UVM_PROT_ALL, UVM_INH_NONE,
+	    		UVM_ADV_RANDOM, UVM_FLAG_FIXED), NULL);
+	if (!error) {
+		kernel_kmem_mapent_store.flags =
+		    UVM_MAP_KERNEL | UVM_MAP_STATIC | UVM_MAP_NOMERGE;
+	}
+
+	*/
+
+	uvm_map(&shadow_map, (vaddr_t *)KASAN_SHADOW_START, 
+                (size_t)(KASAN_SHADOW_END - KASAN_SHADOW_START), NULL, 
+                UVM_UNKNOWN_OFFSET, 0, UVM_MAPFLAG(UVM_PROT_ALL, UVM_PROT_ALL,
+                    UVM_INH_NONE, UVM_ADV_RANDOM, UVM_FLAG_FIXED));
+
+        /*
+         * Map is ready - now we can allocate the shadow buffer
+	 * Allocate zero pages for the shadow region 
+         * We wll do the sections as in Linux 
+         */
+
+        /* User space */
+        vm_map_setmin(&shadow_map, KASAN_SHADOW_START);
+        uvm_km_alloc(&shadow_map, ((vsize_t)(kasan_mem_to_shadow(L4_BASE))
+                    - KASAN_SHADOW_START), 0, UVM_KMF_ZERO);
+
+        /* Second region is L4_BASE+MAX_MEM to start of the cpu entry region */
+        vm_map_setmin(&shadow_map, (unsigned long)kasan_mem_to_shadow(L4_BASE
+                    + MAX_MEM));
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)(L4_BASE
+                        + MAX_MEM)) - (vsize_t)kasan_mem_to_shadow((void *)
+                        CPU_ENTRY_AREA_BASE), 0, UVM_KMF_ZERO);
+
+        /* The cpu entry region - nid as 0*/
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)
+                    CPU_ENTRY_AREA_END) - (vsize_t)kasan_mem_to_shadow((void *)
+                        CPU_ENTRY_AREA_BASE), 0, UVM_KMF_ZERO);
+
+        /* Cpu end region to start of kernel map (KERNBASE)*/
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)
+                    CPU_ENTRY_AREA_END) - (vsize_t)kasan_mem_to_shadow((void *)
+                        KERNBASE), 0, UVM_KMF_ZERO);
+
+        /* The text section - nid as something */
+        vm_map_setmin(&shadow_map, text_start);
+        uvm_km_alloc(&shadow_map, (vsize_t)kasan_mem_to_shadow((void *)
+                    text_end) - (vsize_t)kasan_mem_to_shadow((void *)
+                        text_start), 0, UVM_KMF_ZERO);
+
+        /* Avoiding the Module map for now */
 }
