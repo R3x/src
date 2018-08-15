@@ -726,7 +726,7 @@ set_track(struct kasan_track *track, unsigned int flags)
 }
 
 /* 
- * Function to rerieve address of the structure which contains the details of
+ * Function to retrieve address of the structure which contains the details of
  * allocation.
  */
 struct kasan_alloc_meta 
@@ -738,7 +738,7 @@ struct kasan_alloc_meta
 }
 
 /* 
- * Function to rerieve address of the structure which contains the details of
+ * Function to retrieve address of the structure which contains the details of
  * the memory which was freed.
  */
 struct kasan_free_meta 
@@ -766,7 +766,7 @@ kasan_init_slab_obj(struct pool_cache *cache, const void *object)
 	__builtin_memset(alloc_info, 0, sizeof(*alloc_info));
 }
 
-/* Allocate a */
+/* Allocate memory for the slab using kasan_kmalloc */
 void 
 kasan_slab_alloc(struct pool_cache *cache, void *object, unsigned int flags)
 {
@@ -911,7 +911,7 @@ kasan_krealloc(const void *object, size_t size, unsigned int flags)
 }
 
 /* 
- * NetBSD alternative - free has been deprecited and made a wrapper around
+ * NetBSD alternative - free has been depreciated and made a wrapper around
  * kmem_free. Will remove if no functions need this.
  */
 void 

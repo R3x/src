@@ -5,6 +5,7 @@ Below are the reports that I have written about the same:
 
  - [Kernel Address Sanitizer, part 1](http://blog.netbsd.org/tnf/entry/gsoc_2018_reports_kernel_address)
  - [Kernel Address Sanitizer, part 2](http://blog.netbsd.org/tnf/entry/gsoc_2018_report_kernel_address)
+ - [Kernel Address Sanitizer, part 3](http://blog.netbsd.org/tnf/entry/kernel_address_sanitizer_part_3)
 
 ## Branch - kasan
 This is the main branch I have been working on. 
