@@ -27,3 +27,7 @@ There are a few other tasks that I completed during the GSoC time period - which
  - Example Kernel Module for basic implementation of callout and RUN_ONCE ( Merged with the main branch ) ( [Commit](https://github.com/NetBSD/src/commit/e923d0a954a8c07633c6211d0ce5e4ea9aa8a1e6#diff-2260bab32fff03c8311a5c7ebeb00055) )
  - A bootoption for userland without ASLR ( [Branch](https://github.com/R3x/src/tree/boot_config/) )
  - Example Kernel Module for printing the kernel mappings  ( [File](https://github.com/R3x/src/tree/kasan/sys/modules/examples/kernel_map) )
+
+## Squashed diff with the final deliverable
+
+[http://netbsd.org/~kamil/kasan/gsoc-2018-kasan-final.txt](http://netbsd.org/~kamil/kasan/gsoc-2018-kasan-final.txt)
