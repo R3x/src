@@ -54,6 +54,11 @@ CFLAGS+=	-fsanitize=kernel-address --param asan-globals=1
 COPTS.asan.c+=	-fno-sanitize=kernel-address
 .endif
 
+.if ${KCOV:U0} && ${HAVE_CLANG:U0}
+CFLAGS+=	-fno-ret-protector	-fsanitize-coverage=trace-pc
+COPTS.kcov.c += -fno-sanitize-coverage=trace-pc
+.endif
+
 ##
 ## (3) libkern and compat
 ##

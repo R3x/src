@@ -87,6 +87,7 @@ device-major	kttcp		char 92			kttcp
 device-major	dpt		char 96			dpt
 device-major	twe		char 97			twe
 device-major	nsmb		char 98			nsmb
+device-major kcov      char 99        kcov
 
 #
 # Device majors for Xen. These are assigned here so that:
