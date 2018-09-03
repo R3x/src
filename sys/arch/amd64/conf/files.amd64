@@ -136,10 +136,6 @@ file	dev/isa/fdc_isa.c			fdc_isa
 device	fd: disk
 attach	fd at fdc
 
-# KCOV device
-defpseudo kcov
-file	arch/amd64/amd64/kcov.c		kcov    needs-flag
-
 #
 # Compatibility modules
 #

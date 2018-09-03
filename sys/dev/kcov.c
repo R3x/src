@@ -12,7 +12,7 @@
 #include <sys/queue.h>
 
 #include <uvm/uvm_extern.h>
-#include <amd64/kcov.h>
+#include <sys/kcov.h>
 
 /* #define KCOV_DEBUG */
 #ifdef KCOV_DEBUG
@@ -59,8 +59,15 @@ static dev_type_mmap(kcovmmap);
 const struct cdevsw kcov_cdevsw = {
 	.d_open = kcovopen,
 	.d_close = kcovclose,
+	.d_read = noread,
+	.d_write = nowrite,
 	.d_ioctl = kcovioctl,
+	.d_stop = nostop,
+	.d_tty = notty,
+	.d_poll = nopoll,
 	.d_mmap = kcovmmap,
+	.d_kqfilter = nokqfilter,
+	.d_discard = nodiscard,
 	.d_flag = D_OTHER 
 };
 
@@ -107,11 +114,11 @@ kcovattach(int count)
 }
 
 int
-kcovopen(dev_t dev, int flag, int mode, struct lwp *p)
+kcovopen(dev_t dev, int flag, int mode, struct lwp *l)
 {
-#ifdef KCOV
 	struct kd *kd;
 
+	printf("Opened Kcov device\n");
 	if (kd_lookup(minor(dev)) != NULL)
 		return (EBUSY);
 
@@ -121,16 +128,14 @@ kcovopen(dev_t dev, int flag, int mode, struct lwp *p)
 	kd->kd_unit = minor(dev);
 	TAILQ_INSERT_TAIL(&kd_list, kd, kd_entry);
 	return (0);
-#else
-	return (ENXIO);
-#endif
 }
 
 int
-kcovclose(dev_t dev, int flag, int mode, struct lwp *p)
+kcovclose(dev_t dev, int flag, int mode, struct lwp *l)
 {
 	struct kd *kd;
 
+	printf("Closed Kcov device\n");
 	kd = kd_lookup(minor(dev));
 	if (kd == NULL)
 		return (EINVAL);
@@ -144,18 +149,20 @@ kcovclose(dev_t dev, int flag, int mode, struct lwp *p)
 }
 
 int
-kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *p)
+kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 {
 
 	struct kd *kd;
 	int error = 0;
 
+	printf("IOCTL for KCOV\n");
 	kd = kd_lookup(minor(dev));
 	if (kd == NULL)
 		return (ENXIO);
 
 	switch (cmd) {
 	case KIOSETBUFSIZE:
+		printf("set buffer IOCTL for KCOV\n");
 		if (kd->kd_mode != KCOV_MODE_DISABLED) {
 			error = EBUSY;
 			break;
@@ -165,16 +172,18 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *p)
 			kd->kd_mode = KCOV_MODE_INIT;
 		break;
 	case KIOENABLE:
+		printf("enable IOCTL for KCOV\n");
 		if (kd->kd_mode != KCOV_MODE_INIT) {
 			error = EBUSY;
 			break;
 		}
 		kd->kd_mode = KCOV_MODE_TRACE_PC;
-		kd->kd_pid = p->l_proc->p_pid;
+		kd->kd_pid = l->l_proc->p_pid;
 		break;
 	case KIODISABLE:
+		printf("disable IOCTL for KCOV\n");
 		/* Only the enabled process may disable itself. */
-		if (kd->kd_pid != p->l_proc->p_pid ||
+		if (kd->kd_pid != l->l_proc->p_pid ||
 		    kd->kd_mode != KCOV_MODE_TRACE_PC) {
 			error = EBUSY;
 			break;
@@ -183,6 +192,7 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *p)
 		kd->kd_pid = 0;
 		break;
 	default:
+		printf("unknown IOCTL for KCOV\n");
 		error = EINVAL;
 		DPRINTF("%s: %lu: unknown command\n", __func__, cmd);
 	}
@@ -199,26 +209,31 @@ kcovmmap(dev_t dev, off_t offset, int prot)
 	struct kd *kd;
 	paddr_t pa;
 	vaddr_t va;
-
+	printf("Mmap buffer for KCOV device\n");
 	kd = kd_lookup(minor(dev));
-	if (kd == NULL)
+	if (kd == NULL) {
+		printf("Device not found");
 		return (paddr_t)(-1);
-
-	if (offset < 0 || offset >= kd->kd_nmemb * sizeof(uintptr_t))
+	}
+	if (offset < 0 || offset >= kd->kd_nmemb * sizeof(uintptr_t)){
+		printf("Offset is not proper");
 		return (paddr_t)(-1);
-
+	}
 	va = (vaddr_t)kd->kd_buf + offset;
-	if (pmap_extract(pmap_kernel(), va, &pa) == FALSE)
+	if (pmap_extract(pmap_kernel(), va, &pa) == FALSE) {
+		printf("Address Not found in the kernel");
 		return (paddr_t)(-1);
+	}
 	return (pa);
 }
 
 void
-kcov_exit(struct lwp *p)
+kcov_exit(struct proc *p)
 {
 	struct kd *kd;
 
-	kd = kd_lookup_pid(p->l_proc->p_pid);
+	printf("Process exit for KCOV\n");
+	kd = kd_lookup_pid(p->p_pid);
 	if (kd == NULL)
 		return;
 
@@ -230,6 +245,8 @@ struct kd *
 kd_lookup(int unit)
 {
 	struct kd *kd;
+	
+	printf("Lookup for KCOV\n");
 
 	TAILQ_FOREACH(kd, &kd_list, kd_entry) {
 		if (kd->kd_unit == unit)
@@ -242,6 +259,8 @@ int
 kd_alloc(struct kd *kd, unsigned long nmemb)
 {
 	size_t size;
+	
+	printf("alloc for KCOV\n");
 
 	KASSERT(kd->kd_buf == NULL);
 
@@ -249,7 +268,7 @@ kd_alloc(struct kd *kd, unsigned long nmemb)
 		return (EINVAL);
 
 	size = roundup(nmemb * sizeof(uintptr_t), PAGE_SIZE);
-	kd->kd_buf = malloc(size, M_SUBPROC, M_WAITOK | M_ZERO);
+	kd->kd_buf = (uintptr_t *)uvm_km_alloc(kernel_map, size, 0, UVM_KMF_WIRED|UVM_KMF_ZERO);
 	/* The first element is reserved to hold the number of used elements. */
 	kd->kd_nmemb = nmemb - 1;
 	kd->kd_size = size;
@@ -278,14 +297,15 @@ inintr(void)
 #endif
 }
 
-MODULE(MODULE_CLASS_DRIVER, kcov, "Kernel Code Coverage");
+MODULE(MODULE_CLASS_MISC, kcov, NULL); 
 
 static int
-kcov_modcmd(modcmd_t cmd, void *arg)
+kcov_modcmd(modcmd_t cmd, void *arg __unused)
 {
-	devmajor_t bmajor = -1, cmajor = -1;
+	int bmajor = -1, cmajor = -1;
 	switch (cmd) {
 	case MODULE_CMD_INIT:
+		printf("Init called\n");
 		if (devsw_attach("kcov", NULL, &bmajor, &kcov_cdevsw,
 				 &cmajor))
 			return ENXIO;

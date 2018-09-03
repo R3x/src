@@ -106,6 +106,7 @@ __KERNEL_RCSID(0, "$NetBSD: kern_exit.c,v 1.272 2018/07/12 10:46:48 maxv Exp $")
 #include <sys/sdt.h>
 
 #include <uvm/uvm_extern.h>
+#include <sys/kcov.h> 
 
 #ifdef DEBUG_EXIT
 int debug_exit = 0;
@@ -255,6 +256,10 @@ exit1(struct lwp *l, int exitcode, int signo)
 	sigfillset(&p->p_sigctx.ps_sigignore);
 	sigclearall(p, NULL, &kq);
 	p->p_stat = SDYING;
+ #ifdef KCOV
+	kcov_exit(p);
+ #endif
+	
 	mutex_exit(p->p_lock);
 	ksiginfo_queue_drain(&kq);
 

@@ -1496,6 +1496,11 @@ file	dev/veriexec.c		veriexec	needs-flag
 defpseudo drvctl
 file	kern/kern_drvctl.c		drvctl		needs-flag
 
+# KCOV device
+defpseudo kcov
+defflag     opt_kcov.h     KCOV
+file    dev/kcov.c          kcov
+
 # cpu control
 defpseudo cpuctl
 defflag				CPU_UCODE: firmload
