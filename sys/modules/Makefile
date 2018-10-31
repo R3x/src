@@ -77,6 +77,7 @@ SUBDIR+=	if_vlan
 SUBDIR+=	iic
 SUBDIR+=	ip_ecn
 SUBDIR+=	ipl
+SUBDIR+=    kcov
 SUBDIR+=	kernfs
 SUBDIR+=	layerfs
 SUBDIR+=	lfs

@@ -54,9 +54,12 @@ CFLAGS+=	-fsanitize=kernel-address --param asan-globals=1
 COPTS.asan.c+=	-fno-sanitize=kernel-address
 .endif
 
-
-.if ${KCOV:U0} && ${HAVE_GCC:U0}
-CFLAGS+=	-fno-stack-protector	-fsanitize-coverage=trace-pc
+.if ${KCOV:U0} > 0 && ${HAVE_GCC:U0} > 0
+KCOVFLAGS= -fno-stack-protector	-fsanitize-coverage=trace-pc	
+.for f in kcov.c
+KCOVFLAGS.${f}=	# empty
+.endfor
+CFLAGS+=	${KCOVFLAGS.${.IMPSRC:T}:U${KCOVFLAGS}}
 .endif
 
 ##

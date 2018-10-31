@@ -88,11 +88,9 @@ __sanitizer_cov_trace_pc(void)
 	extern int cold;
 	struct kd *kd;
 	uint64_t idx;
-
 	/* Do not trace during boot. */
 	if (cold)
 		return;
-
 	/* Do not trace in interrupts to prevent noisy coverage. */
 	if (inintr())
 		return;
@@ -209,7 +207,7 @@ kcovmmap(dev_t dev, off_t offset, int prot)
 	struct kd *kd;
 	paddr_t pa;
 	vaddr_t va;
-	printf("Mmap buffer for KCOV device\n");
+	printf("Mmap buffer for KCOV device\n : ");
 	kd = kd_lookup(minor(dev));
 	if (kd == NULL) {
 		printf("Device not found");
@@ -218,7 +216,7 @@ kcovmmap(dev_t dev, off_t offset, int prot)
 	if (offset < 0 || offset >= kd->kd_nmemb * sizeof(uintptr_t)){
 		printf("Offset is not proper");
 		return (paddr_t)(-1);
-	}
+	}	
 	va = (vaddr_t)kd->kd_buf + offset;
 	if (pmap_extract(pmap_kernel(), va, &pa) == FALSE) {
 		printf("Address Not found in the kernel");
