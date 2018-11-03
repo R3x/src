@@ -30,7 +30,7 @@ struct kd {
 	}		 kd_mode;
 	int		 kd_unit;	/* device minor */
 	pid_t		 kd_pid;	/* process being traced */
-	uintptr_t	*kd_buf;	/* traced coverage */
+	vaddr_t	     *kd_buf;	/* traced coverage */
 	size_t		 kd_nmemb;
 	size_t		 kd_size;
 
@@ -101,7 +101,7 @@ __sanitizer_cov_trace_pc(void)
 
 	idx = kd->kd_buf[0];
 	if (idx < kd->kd_nmemb) {
-		kd->kd_buf[idx + 1] = (uintptr_t)__builtin_return_address(0);
+		kd->kd_buf[idx + 1] = (vaddr_t)__builtin_return_address(0);
 		kd->kd_buf[0] = idx + 1;
 	}
 }
@@ -116,7 +116,6 @@ kcovopen(dev_t dev, int flag, int mode, struct lwp *l)
 {
 	struct kd *kd;
 
-	printf("Opened Kcov device\n");
 	if (kd_lookup(minor(dev)) != NULL)
 		return (EBUSY);
 
@@ -133,7 +132,6 @@ kcovclose(dev_t dev, int flag, int mode, struct lwp *l)
 {
 	struct kd *kd;
 
-	printf("Closed Kcov device\n");
 	kd = kd_lookup(minor(dev));
 	if (kd == NULL)
 		return (EINVAL);
@@ -141,7 +139,6 @@ kcovclose(dev_t dev, int flag, int mode, struct lwp *l)
 	DPRINTF("%s: unit=%d\n", __func__, minor(dev));
 
 	TAILQ_REMOVE(&kd_list, kd, kd_entry);
-	free(kd->kd_buf, kd->kd_size);
 	free(kd, sizeof(struct kd));
 	return (0);
 }
@@ -153,14 +150,12 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 	struct kd *kd;
 	int error = 0;
 
-	printf("IOCTL for KCOV\n");
 	kd = kd_lookup(minor(dev));
 	if (kd == NULL)
 		return (ENXIO);
 
 	switch (cmd) {
 	case KIOSETBUFSIZE:
-		printf("set buffer IOCTL for KCOV\n");
 		if (kd->kd_mode != KCOV_MODE_DISABLED) {
 			error = EBUSY;
 			break;
@@ -170,7 +165,6 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 			kd->kd_mode = KCOV_MODE_INIT;
 		break;
 	case KIOENABLE:
-		printf("enable IOCTL for KCOV\n");
 		if (kd->kd_mode != KCOV_MODE_INIT) {
 			error = EBUSY;
 			break;
@@ -179,7 +173,6 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 		kd->kd_pid = l->l_proc->p_pid;
 		break;
 	case KIODISABLE:
-		printf("disable IOCTL for KCOV\n");
 		/* Only the enabled process may disable itself. */
 		if (kd->kd_pid != l->l_proc->p_pid ||
 		    kd->kd_mode != KCOV_MODE_TRACE_PC) {
@@ -190,7 +183,6 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 		kd->kd_pid = 0;
 		break;
 	default:
-		printf("unknown IOCTL for KCOV\n");
 		error = EINVAL;
 		DPRINTF("%s: %lu: unknown command\n", __func__, cmd);
 	}
@@ -207,22 +199,18 @@ kcovmmap(dev_t dev, off_t offset, int prot)
 	struct kd *kd;
 	paddr_t pa;
 	vaddr_t va;
-	printf("Mmap buffer for KCOV device\n : ");
 	kd = kd_lookup(minor(dev));
 	if (kd == NULL) {
-		printf("Device not found");
 		return (paddr_t)(-1);
 	}
 	if (offset < 0 || offset >= kd->kd_nmemb * sizeof(uintptr_t)){
-		printf("Offset is not proper");
 		return (paddr_t)(-1);
 	}	
 	va = (vaddr_t)kd->kd_buf + offset;
 	if (pmap_extract(pmap_kernel(), va, &pa) == FALSE) {
-		printf("Address Not found in the kernel");
 		return (paddr_t)(-1);
 	}
-	return (pa);
+	return atop(pa);
 }
 
 void
@@ -230,7 +218,6 @@ kcov_exit(struct proc *p)
 {
 	struct kd *kd;
 
-	printf("Process exit for KCOV\n");
 	kd = kd_lookup_pid(p->p_pid);
 	if (kd == NULL)
 		return;
@@ -244,8 +231,6 @@ kd_lookup(int unit)
 {
 	struct kd *kd;
 	
-	printf("Lookup for KCOV\n");
-
 	TAILQ_FOREACH(kd, &kd_list, kd_entry) {
 		if (kd->kd_unit == unit)
 			return (kd);
@@ -258,15 +243,13 @@ kd_alloc(struct kd *kd, unsigned long nmemb)
 {
 	size_t size;
 	
-	printf("alloc for KCOV\n");
-
 	KASSERT(kd->kd_buf == NULL);
 
 	if (nmemb == 0 || nmemb > KCOV_BUF_MAX_NMEMB)
 		return (EINVAL);
 
-	size = roundup(nmemb * sizeof(uintptr_t), PAGE_SIZE);
-	kd->kd_buf = (uintptr_t *)uvm_km_alloc(kernel_map, size, 0, UVM_KMF_WIRED|UVM_KMF_ZERO);
+	size = roundup(nmemb * sizeof(vaddr_t), PAGE_SIZE);
+	kd->kd_buf = (vaddr_t *)uvm_km_alloc(kernel_map, size, 0, UVM_KMF_WIRED|UVM_KMF_ZERO);
 	/* The first element is reserved to hold the number of used elements. */
 	kd->kd_nmemb = nmemb - 1;
 	kd->kd_size = size;
@@ -303,7 +286,6 @@ kcov_modcmd(modcmd_t cmd, void *arg __unused)
 	int bmajor = -1, cmajor = -1;
 	switch (cmd) {
 	case MODULE_CMD_INIT:
-		printf("Init called\n");
 		if (devsw_attach("kcov", NULL, &bmajor, &kcov_cdevsw,
 				 &cmajor))
 			return ENXIO;
