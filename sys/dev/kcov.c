@@ -37,13 +37,14 @@ struct kd {
 	TAILQ_ENTRY(kd)	 kd_entry;
 };
 
+
 void kcovattach(int);
 
 int kd_alloc(struct kd *, unsigned long);
 struct kd *kd_lookup(int);
 
 static inline struct kd *kd_lookup_pid(pid_t);
-static inline int inintr(void);
+static inline int in_interrupt(void);
 
 TAILQ_HEAD(, kd) kd_list = TAILQ_HEAD_INITIALIZER(kd_list);
 
@@ -71,6 +72,7 @@ const struct cdevsw kcov_cdevsw = {
 	.d_flag = D_OTHER 
 };
 
+static int test = 1;
 /*
  * Compiling the kernel with the `-fsanitize-coverage=trace-pc' option will
  * cause the following function to be called upon function entry and before
@@ -92,7 +94,7 @@ __sanitizer_cov_trace_pc(void)
 	if (cold)
 		return;
 	/* Do not trace in interrupts to prevent noisy coverage. */
-	if (inintr())
+	if (in_interrupt())
 		return;
 
 	kd = kd_lookup_pid(curproc->p_pid);
@@ -169,6 +171,7 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 			error = EBUSY;
 			break;
 		}
+		test = 0;
 		kd->kd_mode = KCOV_MODE_TRACE_PC;
 		kd->kd_pid = l->l_proc->p_pid;
 		break;
@@ -179,6 +182,7 @@ kcovioctl(dev_t dev, u_long cmd, void *addr, int flag, struct lwp *l)
 			error = EBUSY;
 			break;
 		}
+		test = 1;
 		kd->kd_mode = KCOV_MODE_INIT;
 		kd->kd_pid = 0;
 		break;
@@ -256,6 +260,12 @@ kd_alloc(struct kd *kd, unsigned long nmemb)
 	return (0);
 }
 
+static inline int
+in_interrupt(void)
+{
+	return (curcpu()->ci_idepth >= 0);
+}
+
 static inline struct kd *
 kd_lookup_pid(pid_t pid)
 {
@@ -266,16 +276,6 @@ kd_lookup_pid(pid_t pid)
 			return (kd);
 	}
 	return (NULL);
-}
-
-static inline int
-inintr(void)
-{
-#if defined(__amd64__) || defined(__i386__)
-	return (curcpu()->ci_idepth > 0);
-#else
-	return (0);
-#endif
 }
 
 MODULE(MODULE_CLASS_MISC, kcov, NULL); 
